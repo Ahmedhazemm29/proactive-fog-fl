@@ -16,6 +16,19 @@ services:
       PERIOD_S: "120"       # length of one load cycle in seconds
     restart: unless-stopped
 
+  worker-2:
+    image: thesis/worker:latest
+    container_name: fl-worker-2
+    labels:
+      thesis.role: "worker"
+    cpu_period: 100000
+    cpu_quota: 50000        # 0.5 CPU starting budget
+    mem_limit: 512m
+    environment:
+      PERIOD_S: "120"       # length of one load cycle in seconds
+    restart: unless-stopped
+
+    
   # ---------- Monitoring stack ----------
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
