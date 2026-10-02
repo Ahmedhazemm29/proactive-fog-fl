@@ -131,9 +131,13 @@ def predict(history):
              / sum((x - mean_x) ** 2 for x in xs))
     intercept = mean_y - slope * mean_x
 
-    # Follow the line into the future. Demand can't be negative, so clip at 0.
+    # Follow the line into the future, but never predict less than MIN_LIMIT.
+    # At a demand trough the line can point below 0 for every worker. If we
+    # clipped at 0, a tiny difference (0.07 vs 0.00) would decide the whole
+    # split and swing it to 0.90/0.10 for one cycle. Clipping at MIN_LIMIT
+    # makes near-idle workers count as equal, so they share the budget evenly.
     predicted = slope * PREDICT_AHEAD_SECONDS + intercept
-    return max(predicted, 0.0)
+    return max(predicted, MIN_LIMIT)
 
 
 # ----------------------------------------------------------------------
