@@ -1,21 +1,28 @@
 """
-Compare the reactive and the proactive controller runs.
+Compare the reactive and the proactive controller over repeated runs.
 
-For each run it:
-    1. finds the run's time window (first and last timestamp in its CSV log)
+Reads the list of runs that scripts/run_experiments.py wrote to
+data/runs/runs.csv. For each run it:
+    1. takes the run's time window (start and end in runs.csv) and the
+       controller's CPU limits (the run's CSV log)
     2. pulls per-worker CPU usage and throttled time from Prometheus
        (5 s steps, the same queries the controllers use)
        demand = usage + throttled time
     3. pulls the workers' training speed (steps/s) from `docker logs`
     4. computes averages per worker and in total
-    5. writes results/comparison.md and the figures in figures/ (PDF)
+Then it reports every metric as mean and standard deviation across the
+repeats of each controller, in results/comparison.md, and draws the
+figures of every run in figures/ (PDF).
 
 Usage:  python analysis/compare_runs.py
+        python analysis/compare_runs.py --runs-dir data/runs_test --results /tmp/c.md --figures-dir /tmp/fig
 Needs Prometheus on localhost:9090 and the worker containers still present.
 """
+import argparse
 import csv
 import os
 import re
+import statistics
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -35,15 +42,17 @@ from proactive import THROTTLED_SECONDS_QUERY  # noqa: E402
 # ----------------------------------------------------------------------
 # Settings
 # ----------------------------------------------------------------------
-RUNS = {  # run name -> controller log with its decisions
-    "reactive": os.path.join(ROOT, "data", "reactive_log.csv"),
-    "proactive": os.path.join(ROOT, "data", "proactive_log.csv"),
-}
-STEP_SECONDS = 5          # resolution of the Prometheus range queries
-EQUAL_LENGTH_SECONDS = 600  # second table: first 10 min of each run (5 load cycles)
-
+RUNS_DIR = os.path.join(ROOT, "data", "runs")       # written by run_experiments.py
 RESULTS_FILE = os.path.join(ROOT, "results", "comparison.md")
 FIGURES_DIR = os.path.join(ROOT, "figures")
+STEP_SECONDS = 5          # resolution of the Prometheus range queries
+CONTROLLERS = ["reactive", "proactive"]
+METRICS = [  # key, column title
+    ("demand", "Demand (CPU)"),
+    ("used", "CPU used (CPU)"),
+    ("unmet", "Unmet demand (CPU)"),
+    ("steps", "Training speed (steps/s)"),
+]
 
 # Worker colors: categorical slots 1 and 2 of the validated default palette.
 COLORS = {"fl-worker-1": "#2a78d6", "fl-worker-2": "#eb6834"}
@@ -53,12 +62,35 @@ MUTED = "#8a8a84"   # limit line, grid
 
 
 # ----------------------------------------------------------------------
-# 1. Time windows and limits from the controller logs
+# 1. The list of runs, their time windows and the controllers' limits
 # ----------------------------------------------------------------------
-def read_log(path):
+def read_runs(runs_dir):
     """
-    Return (start, end, limits) for one run. Times are Unix seconds.
-    limits = {worker: [(time, limit after that cycle's decision), ...]}
+    Return the finished runs from runs.csv as a list of dicts with
+    controller, repeat, start, end (Unix seconds) and csv (full path).
+    Runs that did not end with status "ok" are skipped.
+    """
+    runs = []
+    with open(os.path.join(runs_dir, "runs.csv")) as f:
+        for row in csv.DictReader(f):
+            if row["status"] != "ok":
+                print(f"skipping run {row['run']} ({row['controller']}): {row['status']}")
+                continue
+            runs.append({
+                "controller": row["controller"],
+                "repeat": int(row["repeat"]),
+                # the times carry their UTC offset, e.g. 2026-10-02T21:30:00+03:00
+                "start": datetime.fromisoformat(row["start"]).timestamp(),
+                "end": datetime.fromisoformat(row["end"]).timestamp(),
+                "csv": os.path.join(ROOT, row["csv"]),
+            })
+    return runs
+
+
+def read_limits(path):
+    """
+    Return the CPU limits a controller set during one run:
+    {worker: [(time, limit after that cycle's decision), ...]}
     The CSV timestamps are local time, which .timestamp() converts correctly.
     """
     limits = {w: [] for w in WORKERS}
@@ -66,8 +98,7 @@ def read_log(path):
         for row in csv.DictReader(f):
             t = datetime.fromisoformat(row["timestamp"]).timestamp()
             limits[row["worker"]].append((t, float(row["new_limit"])))
-    times = [t for series in limits.values() for t, _ in series]
-    return min(times), max(times), limits
+    return limits
 
 
 # ----------------------------------------------------------------------
@@ -161,41 +192,80 @@ def summarize(cpu, steps, start, end):
 
 
 # ----------------------------------------------------------------------
-# 5a. Summary table
+# 5a. Mean and standard deviation across repeats, and the results file
 # ----------------------------------------------------------------------
-def table(summaries):
-    lines = ["| Run | Worker | Demand (CPU) | CPU used (CPU) | Unmet demand (CPU) | Training speed (steps/s) |",
-             "|---|---|---:|---:|---:|---:|"]
-    for run, rows in summaries.items():
+def aggregate(summaries):
+    """
+    summaries = list of per-run summaries of ONE controller.
+    Returns {worker or "total": {metric: (mean, standard deviation)}}.
+    The standard deviation shows how much the repeats differ from each other.
+    """
+    result = {}
+    for key in WORKERS + ["total"]:
+        result[key] = {}
+        for metric, _ in METRICS:
+            values = [s[key][metric] for s in summaries]
+            sd = statistics.stdev(values) if len(values) > 1 else float("nan")
+            result[key][metric] = (statistics.mean(values), sd)
+    return result
+
+
+def mean_sd_table(stats):
+    """stats = {controller: aggregate(...)}"""
+    lines = ["| Controller | Worker | " + " | ".join(title for _, title in METRICS) + " |",
+             "|---|---|" + "---:|" * len(METRICS)]
+    for controller, rows in stats.items():
         for key in WORKERS + ["total"]:
-            r = rows[key]
             label = "**Total**" if key == "total" else LABELS[key]
-            lines.append(f"| {run} | {label} | {r['demand']:.3f} | {r['used']:.3f} | "
-                         f"{r['unmet']:.3f} | {r['steps']:.1f} |")
+            cells = []
+            for metric, _ in METRICS:
+                m, sd = rows[key][metric]
+                digits = 1 if metric == "steps" else 3
+                cells.append(f"{m:.{digits}f} ± {sd:.{digits}f}")
+            lines.append(f"| {controller} | {label} | " + " | ".join(cells) + " |")
     return "\n".join(lines)
 
 
-def write_results(windows, full, equal):
-    def clock(t):
-        return datetime.fromtimestamp(t).strftime("%H:%M:%S")
+def difference_table(stats):
+    """Totals of the proactive controller compared with the reactive one."""
+    lines = ["| Metric (total) | Reactive | Proactive | Difference |", "|---|---:|---:|---:|"]
+    for metric, title in METRICS:
+        r, _ = stats["reactive"]["total"][metric]
+        p, _ = stats["proactive"]["total"][metric]
+        digits = 1 if metric == "steps" else 3
+        lines.append(f"| {title} | {r:.{digits}f} | {p:.{digits}f} | "
+                     f"{p - r:+.{digits}f} ({(p - r) / r:+.0%}) |")
+    return "\n".join(lines)
 
-    text = ["# Reactive vs proactive run", ""]
-    text += ["| Run | Start | End | Length |", "|---|---|---|---:|"]
-    for run, (start, end) in windows.items():
-        text.append(f"| {run} | {clock(start)} | {clock(end)} | {end - start:.0f} s |")
-    text += ["",
-             "Unmet demand = average throttled CPU (time per second a worker waited because",
-             "its limit was used up). Demand = CPU used + unmet demand. Totals add up both",
-             f"workers. CPU values are Prometheus 30 s rates sampled every {STEP_SECONDS} s; training",
-             "speed is the average of the workers' 10 s log reports.",
-             "", "## Whole runs", "", table(full),
-             "", f"## First {EQUAL_LENGTH_SECONDS // 60} minutes of each run",
-             "",
-             f"Same length for both runs ({EQUAL_LENGTH_SECONDS // 120} full 120 s load cycles), "
-             "as a fairness check.",
-             "", table(equal), ""]
-    os.makedirs(os.path.dirname(RESULTS_FILE), exist_ok=True)
-    with open(RESULTS_FILE, "w") as f:
+
+def per_run_table(runs):
+    """One line per run with its totals, so single odd runs are easy to spot."""
+    lines = ["| Controller | Repeat | Start | Length | " + " | ".join(t for _, t in METRICS) + " |",
+             "|---|---:|---|---:|" + "---:|" * len(METRICS)]
+    for run in runs:
+        total = run["summary"]["total"]
+        cells = [f"{total[m]:.1f}" if m == "steps" else f"{total[m]:.3f}" for m, _ in METRICS]
+        lines.append(f"| {run['controller']} | {run['repeat']} | "
+                     f"{datetime.fromtimestamp(run['start']):%Y-%m-%d %H:%M} | "
+                     f"{run['end'] - run['start']:.0f} s | " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
+def write_results(path, runs, stats):
+    counts = ", ".join(f"{c}: {sum(r['controller'] == c for r in runs)} runs" for c in stats)
+    text = ["# Reactive vs proactive, repeated runs", "",
+            f"Repeats: {counts}. Values are mean ± standard deviation across the repeats.",
+            "",
+            "Unmet demand = average throttled CPU (time per second a worker waited because",
+            "its limit was used up). Demand = CPU used + unmet demand. Totals add up both",
+            f"workers. CPU values are Prometheus 30 s rates sampled every {STEP_SECONDS} s; training",
+            "speed is the average of the workers' 10 s log reports.",
+            "", "## Mean ± standard deviation", "", mean_sd_table(stats), ""]
+    if "reactive" in stats and "proactive" in stats:
+        text += ["## Proactive compared with reactive", "", difference_table(stats), ""]
+    text += ["## Every run (totals)", "", per_run_table(runs), ""]
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "w") as f:
         f.write("\n".join(text))
 
 
@@ -216,7 +286,7 @@ def style():
     })
 
 
-def plot_limits(run, start, end, limits):
+def plot_limits(figures_dir, run, start, end, limits):
     """CPU limit of each worker over the run, as steps (a limit holds until the next decision)."""
     fig, ax = plt.subplots(figsize=(6.3, 2.6))
     for w in WORKERS:
@@ -229,11 +299,11 @@ def plot_limits(run, start, end, limits):
     ax.set_ylabel("CPU limit (cores)")
     ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=2, frameon=False)
     fig.tight_layout()
-    fig.savefig(os.path.join(FIGURES_DIR, f"limits_{run}.pdf"))
+    fig.savefig(os.path.join(figures_dir, f"limits_{run}.pdf"))
     plt.close(fig)
 
 
-def plot_demand_usage(run, start, end, cpu, limits):
+def plot_demand_usage(figures_dir, run, start, end, cpu, limits):
     """
     One panel per worker: demand (line), CPU actually used (filled area) and
     the limit (dashed). The gap between the demand line and the filled area
@@ -253,35 +323,41 @@ def plot_demand_usage(run, start, end, cpu, limits):
     axes[-1].set_xlim(0, end - start)
     axes[-1].set_xlabel("Time since run start (s)")
     fig.tight_layout()
-    fig.savefig(os.path.join(FIGURES_DIR, f"demand_usage_{run}.pdf"))
+    fig.savefig(os.path.join(figures_dir, f"demand_usage_{run}.pdf"))
     plt.close(fig)
 
 
 # ----------------------------------------------------------------------
-# Main: windows -> data -> numbers -> table and figures
+# Main: runs -> data -> numbers per run -> mean ± sd, table and figures
 # ----------------------------------------------------------------------
 def main():
-    style()
-    os.makedirs(FIGURES_DIR, exist_ok=True)
-    windows, full, equal = {}, {}, {}
+    parser = argparse.ArgumentParser(description="Compare repeated reactive and proactive runs.")
+    parser.add_argument("--runs-dir", default=RUNS_DIR, help="folder with runs.csv")
+    parser.add_argument("--results", default=RESULTS_FILE, help="markdown file to write")
+    parser.add_argument("--figures-dir", default=FIGURES_DIR, help="folder for the PDFs")
+    args = parser.parse_args()
 
-    for run, log_path in RUNS.items():
-        start, end, limits = read_log(log_path)
-        windows[run] = (start, end)
+    style()
+    os.makedirs(args.figures_dir, exist_ok=True)
+    runs = read_runs(args.runs_dir)
+
+    for run in runs:
+        name = f"{run['controller']}_{run['repeat']}"
+        start, end = run["start"], run["end"]
+        limits = read_limits(run["csv"])
         cpu = cpu_series(start, end)
         steps = {w: steps_per_second(w, start, end) for w in WORKERS}
+        run["summary"] = summarize(cpu, steps, start, end)
 
-        full[run] = summarize(cpu, steps, start, end)
-        equal[run] = summarize(cpu, steps, start, start + EQUAL_LENGTH_SECONDS)
-
-        plot_limits(run, start, end, limits)
-        plot_demand_usage(run, start, end, cpu, limits)
-        print(f"{run}: {end - start:.0f} s, {len(cpu[WORKERS[0]])} Prometheus points, "
+        plot_limits(args.figures_dir, name, start, end, limits)
+        plot_demand_usage(args.figures_dir, name, start, end, cpu, limits)
+        print(f"{name}: {end - start:.0f} s, {len(cpu[WORKERS[0]])} Prometheus points, "
               f"{len(steps[WORKERS[0]])} log lines per worker")
 
-    write_results(windows, full, equal)
-    print(f"Wrote {os.path.relpath(RESULTS_FILE, ROOT)} and 4 PDFs in "
-          f"{os.path.relpath(FIGURES_DIR, ROOT)}/")
+    stats = {c: aggregate([r["summary"] for r in runs if r["controller"] == c])
+             for c in CONTROLLERS if any(r["controller"] == c for r in runs)}
+    write_results(args.results, runs, stats)
+    print(f"Wrote {args.results} and {2 * len(runs)} PDFs in {args.figures_dir}")
 
 
 if __name__ == "__main__":
