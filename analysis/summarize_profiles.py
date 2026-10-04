@@ -13,9 +13,14 @@ Prints markdown tables. Each metric gets mean ± sd over the repeats, the
 proactive minus reactive difference, and whether the runs overlap: "no"
 means every proactive run was on the same side of every reactive run.
 
+A second block of tables compares the two sine runs, with the workers'
+waves 20 s apart (2 October) and 60 s apart (sine profile), with the others.
+
 Usage:  python analysis/summarize_profiles.py
 """
+import cmath
 import csv
+import math
 import os
 import re
 import statistics
@@ -24,6 +29,7 @@ from datetime import datetime
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 WORKERS = ["fl-worker-1", "fl-worker-2"]
 BUDGET = 1.0   # CPU shared by both workers
+PERIOD = 120   # seconds per wave in the sine loads
 
 # name: (comparison.md, folder with runs.csv, worker logs)
 PROFILES = {
@@ -34,7 +40,13 @@ PROFILES = {
                "data/runs/bursts/{run}_{worker}.log"),
     "noisy_sine": ("results/noisy_sine/comparison.md", "data/runs/noisy_sine",
                    "data/runs/noisy_sine/{run}_{worker}.log"),
+    # The sine profile (load/profiles/sine.json): waves half a period apart.
+    "sine_60s": ("results/sine/comparison.md", "data/runs/sine", "data/runs/sine/{run}_{worker}.log"),
 }
+# The first tables keep the names above; the sine comparison uses clearer ones.
+FIRST_TABLES = ["sine", "bursts", "noisy_sine"]
+OFFSET_TABLES = {"sine": "sine, 20 s apart (2 Oct)", "sine_60s": "sine, 60 s apart",
+                 "noisy_sine": "noisy_sine", "bursts": "bursts"}
 METRICS = [  # column in the "Every run" table, title, digits, higher is better?
     ("Training speed (steps/s)", "Training speed (steps/s)", 1, True),
     ("CPU used (CPU)", "CPU used (CPU)", 3, True),
@@ -101,14 +113,16 @@ def intended_load(profile, row, worker):
     end = datetime.fromisoformat(row["end"]).timestamp()
     path = os.path.join(ROOT, PROFILES[profile][2].format(
         run=f"{row['controller']}_{row['repeat']}", worker=worker))
-    loads = {}
+    every_second, every_10s = {}, {}
     for line in open(path):
         new, old = NEW_LINE.match(line), OLD_LINE.match(line)
         if new and start <= stamp(new.group(1)) <= end:
-            loads[int(new.group(2))] = (stamp(new.group(1)), float(new.group(3)))
+            every_second[int(new.group(2))] = (stamp(new.group(1)), float(new.group(3)))
         elif old and start <= stamp(old.group(1)) <= end:
-            loads[round(stamp(old.group(1)) / 10)] = (stamp(old.group(1)), float(old.group(2)))
-    return loads
+            every_10s[round(stamp(old.group(1)) / 10)] = (stamp(old.group(1)), float(old.group(2)))
+    # New logs also have a training-speed line every 10 s that looks like the
+    # old format, so the 10 s lines are only used for old logs (nothing else there).
+    return every_second or every_10s
 
 
 def load_pairs(profile):
@@ -146,6 +160,30 @@ def limit_while(profile, controller):
     return statistics.mean(totals), statistics.mean(busy), statistics.mean(idle)
 
 
+def wave_shift(samples):
+    """
+    Where a worker's wave sits in time. Its load is about
+    mean + amplitude * sin(2 * pi * (t - shift) / PERIOD). Multiplying the load
+    by a 120 s wave and adding it all up (one Fourier coefficient) gives `shift`.
+    """
+    mean = statistics.mean(load for _, load in samples)
+    z = sum((load - mean) * cmath.exp(-2j * math.pi * t / PERIOD) for t, load in samples)
+    return -cmath.phase(z * 1j) * PERIOD / (2 * math.pi)
+
+
+def wave_offset(profile, row):
+    """Seconds between the two workers' waves in one run (0 = together, 60 = half a period)."""
+    shift_1, shift_2 = (wave_shift(list(intended_load(profile, row, w).values()))
+                        for w in WORKERS)
+    offset = (shift_2 - shift_1) % PERIOD
+    return min(offset, PERIOD - offset)   # how far apart, whichever worker is ahead
+
+
+def overlaps(reactive, proactive):
+    """Do the two controllers' runs overlap? Yes if the lowest top is above the highest bottom."""
+    return max(min(reactive), min(proactive)) <= min(max(reactive), max(proactive))
+
+
 # ----------------------------------------------------------------------
 # 3. Tables
 # ----------------------------------------------------------------------
@@ -164,13 +202,49 @@ def load_table(profiles):
     return "\n".join(lines)
 
 
-def limits_table(profiles):
+def limits_table(profiles, labels=None):
     lines = ["| Profile | Controller | Both limits together | Limit while busy | Limit while idle |",
              "|---|---|---:|---:|---:|"]
     for p in profiles:
         for c in ("reactive", "proactive"):
             total, busy, idle = limit_while(p, c)
-            lines.append(f"| {p} | {c} | {total:.2f} | {busy:.2f} | {idle:.2f} |")
+            lines.append(f"| {labels[p] if labels else p} | {c} | {total:.2f} | {busy:.2f} | {idle:.2f} |")
+    return "\n".join(lines)
+
+
+def offset_load_table(profiles, labels):
+    """The loads of the sine comparison, with the measured distance between the two waves."""
+    lines = ["| Load | Waves apart (s) | Correlation of the two loads | Total load | "
+             "Time total is above 1.0 CPU |",
+             "|---|---:|---:|---:|---:|"]
+    for p in profiles:
+        pairs = load_pairs(p)
+        total = [a + b for a, b in pairs]
+        over = sum(t > BUDGET for t in total) / len(total)
+        if "sine" in p:   # only the wave loads have an offset; range over the runs
+            offsets = [wave_offset(p, row) for row in runs_of(p)]
+            apart = f"{min(offsets):.1f} to {max(offsets):.1f}"
+        else:
+            apart = "-"
+        lines.append(f"| {labels[p]} | {apart} | "
+                     f"{statistics.correlation([a for a, _ in pairs], [b for _, b in pairs]):+.2f} | "
+                     f"{statistics.mean(total):.2f} ({min(total):.2f} to {max(total):.2f}) | {over:.0%} |")
+    return "\n".join(lines)
+
+
+def offset_results_table(profiles, results, labels):
+    """Training speed of both controllers and the proactive minus reactive differences."""
+    speed = METRICS[0][0]
+    lines = ["| Load | Training speed, reactive | Training speed, proactive | Speed difference | "
+             "CPU used difference | Unmet demand difference | Runs overlap? |",
+             "|---|---:|---:|---:|---:|---:|---|"]
+    for p in profiles:
+        totals, diffs, runs = results[p]
+        overlapping = [title for column, title, _, _ in METRICS
+                       if overlaps(runs["reactive"][column], runs["proactive"][column])]
+        verdict = "yes: " + ", ".join(overlapping) if overlapping else "no"
+        lines.append(f"| {labels[p]} | {totals['reactive'][speed]} | {totals['proactive'][speed]} | "
+                     + " | ".join(diffs[column] for column, _, _, _ in METRICS) + f" | {verdict} |")
     return "\n".join(lines)
 
 
@@ -193,10 +267,8 @@ def difference_table(profiles, results):
         _, diffs, runs = results[p]
         for column, title, digits, higher_is_better in METRICS:
             r, a = runs["reactive"][column], runs["proactive"][column]
-            # The ranges overlap if the lowest top is above the highest bottom.
-            overlap = max(min(r), min(a)) <= min(max(r), max(a))
             better = (float(diffs[column].split()[0]) > 0) == higher_is_better
-            verdict = "yes" if overlap else ("no, proactive better" if better else "no, reactive better")
+            verdict = "yes" if overlaps(r, a) else ("no, proactive better" if better else "no, reactive better")
             fmt = lambda v: f"{v:.{digits}f}"
             lines.append(f"| {p} | {title} | {fmt(min(r))} to {fmt(max(r))} | "
                          f"{fmt(min(a))} to {fmt(max(a))} | {diffs[column]} | {verdict} |")
@@ -204,15 +276,26 @@ def difference_table(profiles, results):
 
 
 def main():
-    profiles = [p for p, (path, _, _) in PROFILES.items() if os.path.exists(os.path.join(ROOT, path))]
-    missing = [p for p in PROFILES if p not in profiles]
+    available = [p for p, (path, _, _) in PROFILES.items() if os.path.exists(os.path.join(ROOT, path))]
+    missing = [p for p in PROFILES if p not in available]
     if missing:
         print(f"(no results yet for: {', '.join(missing)})\n")
-    results = {p: read_results(PROFILES[p][0]) for p in profiles}
-    print("## Load per profile\n\n" + load_table(profiles) + "\n")
-    print("## Results (mean ± sd over 3 runs each)\n\n" + results_table(profiles, results) + "\n")
-    print("## Proactive compared with reactive\n\n" + difference_table(profiles, results) + "\n")
-    print("## Where the controllers put the CPU (CPU limit, cores)\n\n" + limits_table(profiles))
+    results = {p: read_results(PROFILES[p][0]) for p in available}
+
+    first = [p for p in FIRST_TABLES if p in available]
+    print("## Load per profile\n\n" + load_table(first) + "\n")
+    print("## Results (mean ± sd over 3 runs each)\n\n" + results_table(first, results) + "\n")
+    print("## Proactive compared with reactive\n\n" + difference_table(first, results) + "\n")
+    print("## Where the controllers put the CPU (CPU limit, cores)\n\n" + limits_table(first))
+
+    if "sine_60s" in available:
+        second = [p for p in OFFSET_TABLES if p in available]
+        print("\n## Sine with the waves 20 s apart vs 60 s apart\n")
+        print("### Load\n\n" + offset_load_table(second, OFFSET_TABLES) + "\n")
+        print("### Proactive compared with reactive\n\n"
+              + offset_results_table(second, results, OFFSET_TABLES) + "\n")
+        print("### Where the controllers put the CPU (CPU limit, cores)\n\n"
+              + limits_table(second, OFFSET_TABLES))
 
 
 if __name__ == "__main__":

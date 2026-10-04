@@ -7,9 +7,14 @@ the same load. The two workers share a budget of 1.0 CPU.
 
 | Profile | Runs | Details |
 |---|---|---|
-| sine | 2026-10-02, 21:38 to 22:43 | [comparison.md](comparison.md), [figures](../figures/) |
+| sine, 20 s apart | 2026-10-02, 21:38 to 22:43 | [comparison.md](comparison.md), [figures](../figures/) |
 | bursts | 2026-10-04, 18:42 to 19:47 | [bursts/comparison.md](bursts/comparison.md), [bursts/figures](bursts/figures/) |
 | noisy_sine | 2026-10-04, 19:48 to 20:53 | [noisy_sine/comparison.md](noisy_sine/comparison.md), [noisy_sine/figures](noisy_sine/figures/) |
+| sine, 60 s apart | 2026-10-05, 00:06 to 01:12 | [sine/comparison.md](sine/comparison.md), [sine/figures](sine/figures/) |
+
+Up to "Where proactive helps and where it doesn't", "sine" means the
+2 October runs, with the two workers' waves about 20 seconds apart. The run
+with the waves 60 seconds apart is compared in its own section after that.
 
 ## The three loads
 
@@ -29,7 +34,7 @@ The load each worker wanted during the runs, from its own log:
 |---|---:|---:|---:|---:|---:|
 | sine | 0.55 | 0.55 | +0.44 | 1.10 (0.33 to 1.87) | 55% |
 | bursts | 0.36 | 0.25 | -0.12 | 0.61 (0.20 to 2.00) | 42% |
-| noisy_sine | 0.53 | 0.55 | -0.81 | 1.07 (0.53 to 1.51) | 63% |
+| noisy_sine | 0.53 | 0.55 | -0.82 | 1.07 (0.53 to 1.50) | 63% |
 
 A correlation near +1 means the workers are busy together, near -1 that
 they take turns. The last column is how often the two together wanted more
@@ -80,7 +85,7 @@ wanted at least 0.7 CPU, "while idle" the seconds in which it wanted at most
 | sine | reactive | 0.95 | 0.47 | 0.49 |
 | sine | proactive | 1.00 | 0.57 | 0.42 |
 | bursts | reactive | 0.49 | 0.22 | 0.25 |
-| bursts | proactive | 1.00 | 0.64 | 0.46 |
+| bursts | proactive | 1.00 | 0.63 | 0.46 |
 | noisy_sine | reactive | 0.96 | 0.45 | 0.52 |
 | noisy_sine | proactive | 1.00 | 0.72 | 0.23 |
 
@@ -110,7 +115,7 @@ is less to gain from moving CPU around: 12% faster training.
 **Its biggest gain, under bursts, mostly does not come from predicting.** A
 20-second spike shows up small and late in a 30-second average. So
 proactive gives a spiking worker only a little more CPU than an idle one
-(0.64 against 0.46). The large difference, 136% faster training, comes from
+(0.63 against 0.46). The large difference, 136% faster training, comes from
 reactive breaking down:
 
 - An idle bursts worker uses about 20% of a 0.5 limit, which is exactly
@@ -133,13 +138,92 @@ reactive breaking down:
   unmet demand stayed high for both controllers in the sine loads (0.46 to
   0.62 CPU).
 
+## Sine with the waves 20 s apart vs 60 s apart
+
+On 2 October the two workers' waves were about 20 seconds apart, so they
+were busy at roughly the same times. To see whether that is why proactive
+gained only 12% there but 30% under noisy_sine, the sine profile was run on
+2026-10-05 with the waves 60 seconds apart: half a period, so one worker is
+busy exactly when the other is quiet. Everything else was done as for the
+other profiles.
+
+The offset was measured from the load each worker logged every second.
+Before the runs the waves were 60.08 seconds apart, and in the six runs 59.9
+to 60.0 seconds. The small differences come from the second worker picking
+up a new profile a fraction of a second after the first. On 2 October the
+waves were 18.3 to 18.6 seconds apart. noisy_sine is also set to 60 seconds,
+but its noise shifts the measured value to about 56 seconds: the same
+calculation on its load without the noise gives exactly 60.00 seconds.
+
+| Load | Waves apart (s) | Correlation of the two loads | Total load | Time total is above 1.0 CPU |
+|---|---:|---:|---:|---:|
+| sine, 20 s apart (2 Oct) | 18.3 to 18.6 | +0.44 | 1.10 (0.33 to 1.87) | 55% |
+| sine, 60 s apart | 59.9 to 60.0 | -1.00 | 1.10 (1.09 to 1.11) | 100% |
+| noisy_sine | 54.8 to 56.1 | -0.82 | 1.07 (0.53 to 1.50) | 63% |
+| bursts | - | -0.12 | 0.61 (0.20 to 2.00) | 42% |
+
+| Load | Training speed, reactive | Training speed, proactive | Speed difference | CPU used difference | Unmet demand difference | Runs overlap? |
+|---|---:|---:|---:|---:|---:|---|
+| sine, 20 s apart (2 Oct) | 315.3 ± 4.0 | 354.0 ± 9.7 | +38.7 (+12%) | +0.075 (+13%) | -0.061 (-10%) | no |
+| sine, 60 s apart | 322.9 ± 3.8 | 407.0 ± 5.0 | +84.1 (+26%) | +0.147 (+25%) | -0.139 (-23%) | no |
+| noisy_sine | 300.3 ± 2.9 | 391.8 ± 1.2 | +91.5 (+30%) | +0.153 (+28%) | -0.153 (-25%) | no |
+| bursts | 93.6 ± 34.9 | 220.4 ± 0.5 | +126.8 (+136%) | +0.213 (+124%) | -0.241 (-44%) | no |
+
+CPU limit in cores, as in the section "Where the controllers put the CPU":
+
+| Profile | Controller | Both limits together | Limit while busy | Limit while idle |
+|---|---|---:|---:|---:|
+| sine, 20 s apart (2 Oct) | reactive | 0.95 | 0.47 | 0.49 |
+| sine, 20 s apart (2 Oct) | proactive | 1.00 | 0.57 | 0.42 |
+| sine, 60 s apart | reactive | 1.00 | 0.48 | 0.53 |
+| sine, 60 s apart | proactive | 1.00 | 0.76 | 0.21 |
+| noisy_sine | reactive | 0.96 | 0.45 | 0.52 |
+| noisy_sine | proactive | 1.00 | 0.72 | 0.23 |
+| bursts | reactive | 0.49 | 0.22 | 0.25 |
+| bursts | proactive | 1.00 | 0.63 | 0.46 |
+
+### Does the offset explain +12% against +30%?
+
+**Mostly, yes.** With the waves 60 seconds apart instead of 20, proactive's
+advantage in training speed grew from 12% to 26%. That is 14 of the 18
+points between the 2 October sine and noisy_sine. The other 4 points come
+with the noise, which slowed both controllers, reactive a little more: by 23
+steps/s against 15 steps/s for proactive. Cutting the noise off at 0 and 1
+also lowers noisy_sine's average load a little, 1.07 against 1.10 CPU.
+
+The reason is simple. With the waves 60 seconds apart, one worker is always
+busy while the other is quiet, so there is always CPU worth moving, and
+proactive moves it: a busy worker had 0.76 CPU on average and a quiet one
+0.21. With the waves 20 seconds apart, the two workers rise and fall almost
+together, so proactive kept the split closer to even, 0.57 against 0.42.
+
+**What the offset does not explain:**
+
+- **Reactive.** It trained at 315 steps/s with the waves 20 seconds apart
+  and at 323 with them 60 seconds apart. Under a sine load it hardly moves
+  the limits: they stayed between 0.3 and 0.7 CPU in every sine run, mostly
+  between 0.4 and 0.6, while demand swung between about 0.2 and 1.0 (see
+  [demand_usage_reactive_1.pdf](sine/figures/demand_usage_reactive_1.pdf)).
+  So reactive cannot profit from the workers taking turns, and the whole
+  change in the gap comes from proactive: 354 against 407 steps/s.
+- **The shortage.** With the waves 60 seconds apart the two workers together
+  want 1.10 CPU at every moment, just above the 1.0 budget, and each wants a
+  full core while it is busy. So even proactive left 0.46 CPU of demand
+  unmet, the same as under noisy_sine.
+- **Bursts.** Its +136% comes from reactive shrinking both workers and
+  leaving half the budget unused, not from how the two loads line up.
+- **The other differences between the two sine runs.** The 2 October runs
+  also had another day, the older runner, which did not restart the load
+  before each run, and the old workload code with the same wave formula.
+  Reactive's nearly equal speed on both days, 2% apart, suggests these
+  matter little, but this comparison cannot rule them out.
+
 ## Caveats
 
-- **The sine runs are from another day and an older setup.** They used the
-  old built-in sine (both waves about 20 seconds apart) and a runner that did
-  not restart the load before each run. Today's `sine` profile puts the
-  workers half a wave apart, like noisy_sine. For a like-for-like
-  comparison, run `--profile sine` (about 67 minutes).
+- **The first sine runs are from another day and an older setup.** They
+  used the old built-in sine (both waves about 20 seconds apart) and a
+  runner that did not restart the load before each run. The section above
+  compares them with a sine run with the waves 60 seconds apart.
 - **Prediction or budget?** These runs cannot tell how much of proactive's
   gain comes from predicting 10 seconds ahead, and how much from always
   sharing out the full budget in proportion to demand. A proactive run with
@@ -163,8 +247,10 @@ reactive breaking down:
 ```
 python scripts/run_experiments.py --profile bursts
 python scripts/run_experiments.py --profile noisy_sine
+python scripts/run_experiments.py --profile sine
 python analysis/compare_runs.py --runs-dir data/runs/bursts --results results/bursts/comparison.md --figures-dir results/bursts/figures
 python analysis/compare_runs.py --runs-dir data/runs/noisy_sine --results results/noisy_sine/comparison.md --figures-dir results/noisy_sine/figures
+python analysis/compare_runs.py --runs-dir data/runs/sine --results results/sine/comparison.md --figures-dir results/sine/figures
 python analysis/summarize_profiles.py
 ```
 
