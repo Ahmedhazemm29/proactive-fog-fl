@@ -26,6 +26,11 @@ federated learning.
   runs; restarts the profile before every run so all runs see the same load;
   saves CSVs, runs.csv and the workers' log lines to `data/runs/<profile>/`.
 - The controllers never read `load/`: they only see Prometheus and the CPU limits.
+- `analysis/compare_runs.py --runs-dir data/runs/<profile> --results
+  results/<profile>/comparison.md --figures-dir results/<profile>/figures`:
+  mean ± sd per controller and figures per run (the 2 October sine runs are
+  in `results/comparison.md` and `figures/`). `analysis/summarize_profiles.py`
+  prints the tables of `results/profiles_summary.md`.
 - `controller/set_cpu.py`: sets a container's CPU limit (cpu_period=100000,
   cpu_quota)
 - `controller/reactive.py`: reactive baseline controller (done, committed).
@@ -74,6 +79,17 @@ federated learning.
   so Prometheus stores such samples anyway. Leftover: the old workers have 4
   samples stamped 2026-10-04 18:40:12-18:40:27 local, which add about 0.3 CPU
   to each worker's usage query from 18:40:17 to 18:40:52 local.
+
+- Load profiles, 3 x 10 min per controller (sine 2026-10-02, bursts and
+  noisy_sine 2026-10-04): proactive beat reactive in every run. Training
+  speed +12% (sine), +30% (noisy_sine), +136% (bursts). Reactive is so late
+  that busy workers get no more CPU than idle ones; under bursts an idle
+  worker sits at its 20% shrink threshold, so reactive shrinks both and hands
+  out only 0.49 of the 1.0 budget. Proactive follows 2-minute waves well but
+  sees 20 s spikes late (30 s window). Not yet separated: prediction vs
+  always splitting the full budget (try a 0 s horizon). The 2 October sine
+  had the workers about 20 s apart; today's sine profile has them half a
+  wave apart. See `results/profiles_summary.md`.
 
 ## Conventions
 
