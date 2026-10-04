@@ -1,0 +1,4 @@
+{
+  "fl-worker-1": {"mode": "steps", "steps": [[0, 0.2], [120, 0.9]], "repeat": 240},
+  "fl-worker-2": {"mode": "steps", "steps": [[0, 0.9], [120, 0.2]], "repeat": 240}
+}

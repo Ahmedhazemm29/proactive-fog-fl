@@ -1,0 +1,4 @@
+{
+  "fl-worker-1": {"mode": "constant", "level": 0.8},
+  "fl-worker-2": {"mode": "constant", "level": 0.3}
+}

@@ -1,23 +1,31 @@
 """
 Experiment runner: repeat the reactive vs proactive comparison.
 
+The workers run a named load profile from load/profiles/ (--profile, default
+"sine"), so the comparison can be repeated per workload type.
+
 For every run, alternating reactive, proactive, reactive, ... so that slow
 drift (other load on the machine, temperature, ...) affects both equally:
-    1. reset both workers to START_LIMIT CPU and wait for the warm-up
+    1. reset both workers to START_LIMIT CPU and start the load profile from
+       its beginning, so every run sees exactly the same load; then warm up
     2. start the controller as a subprocess and let it run
     3. stop it with SIGINT, the same signal Ctrl+C sends, so it exits cleanly
-    4. move its CSV log to <out-dir>/<controller>_<n>.csv and add a row
-       to <out-dir>/runs.csv
+    4. move its CSV log to <out-dir>/<controller>_<n>.csv, save the workers'
+       log lines (intended load each second, training speed) next to it and
+       add a row to <out-dir>/runs.csv
+The controllers are told nothing about the load profile. They see only
+Prometheus and the CPU limits, as always.
 
-Full experiment in the background (keeps running if the terminal closes):
-    mkdir -p data/runs
-    nohup .venv/bin/python scripts/run_experiments.py > /dev/null 2>> data/runs/runner.log &
+Full experiment in the background (keeps running if the terminal closes),
+here for the bursts profile. Results go to data/runs/<profile>/:
+    mkdir -p data/runs/bursts
+    nohup .venv/bin/python scripts/run_experiments.py --profile bursts > /dev/null 2>> data/runs/bursts/runner.log &
 
-Watch progress:            tail -f data/runs/runner.log
-Stop early (cleanly):      kill $(cat data/runs/runner.pid)
+Watch progress:            tail -f data/runs/bursts/runner.log
+Stop early (cleanly):      kill $(cat data/runs/bursts/runner.pid)
 
 Short test run:
-    python scripts/run_experiments.py --repeats 2 --minutes 1 --warmup 20 --out-dir data/runs_test
+    python scripts/run_experiments.py --profile bursts --repeats 2 --minutes 1 --warmup 20 --out-dir data/runs_test
 """
 import argparse
 import csv
@@ -26,7 +34,7 @@ import signal
 import subprocess
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -34,6 +42,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "controller"))
 from reactive import PROMETHEUS_URL, WORKERS  # noqa: E402
 from set_cpu import set_cpus  # noqa: E402
+from set_load import apply_named_profile, named_profiles  # noqa: E402  (scripts/set_load.py)
 
 
 # ----------------------------------------------------------------------
@@ -42,7 +51,8 @@ from set_cpu import set_cpus  # noqa: E402
 CONTROLLERS = ["reactive", "proactive"]  # run order inside each repeat
 START_LIMIT = 0.5          # CPU per worker at the start of every run
 STOP_TIMEOUT_SECONDS = 20  # how long a controller gets to exit after SIGINT
-RUNS_COLUMNS = ["run", "controller", "repeat", "start", "end", "duration_s", "csv", "status"]
+RUNS_COLUMNS = ["run", "controller", "repeat", "profile", "start", "end", "duration_s",
+                "csv", "status"]
 
 
 def controller_script(name):
@@ -75,9 +85,12 @@ def now_iso():
 # ----------------------------------------------------------------------
 # Checks before starting
 # ----------------------------------------------------------------------
-def preflight(out_dir):
+def preflight(out_dir, profile):
     """Return a list of problems. The experiment only starts if it is empty."""
     problems = []
+    if profile not in named_profiles():
+        problems.append(f"unknown load profile {profile!r}, choose from: "
+                        f"{', '.join(named_profiles())} (files in load/profiles/)")
     pid_file = os.path.join(out_dir, "runner.pid")
     if os.path.exists(pid_file):
         try:
@@ -113,11 +126,35 @@ def reset_workers():
         set_cpus(worker, START_LIMIT)
 
 
-def run_one(run, controller, repeat, warmup, run_seconds, out_dir):
+def save_worker_logs(out_dir, run_name, since, until):
+    """
+    Save each worker's log lines between `since` and `until` (Unix seconds):
+    the intended load of every second (ground truth) and the training speed.
+    Docker deletes a container's logs when the container is recreated, so
+    they are kept next to the run's CSV.
+    Only --since goes to docker; the end is checked here, because `docker logs
+    --until` gives nothing if the log has lines with a wrong (future) clock.
+    """
+    since_text = datetime.fromtimestamp(since, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for worker in WORKERS:
+        output = subprocess.run(["docker", "logs", "--timestamps", "--since", since_text, worker],
+                                capture_output=True, text=True).stdout
+        path = os.path.join(out_dir, f"{run_name}_{worker}.log")
+        with open(path, "w") as f:
+            for line in output.splitlines():
+                # docker's time stamp, e.g. 2026-10-04T14:04:16.669514359Z (UTC)
+                stamp = datetime.fromisoformat(line[:26] + "+00:00").timestamp()
+                if stamp <= until:
+                    f.write(line + "\n")
+
+
+def run_one(run, controller, repeat, profile, warmup, run_seconds, out_dir):
     """Warm up, run one controller, stop it, file its CSV. Returns its runs.csv row."""
     log(f"run {run}: {controller} #{repeat}. Workers reset to {START_LIMIT} CPU, "
-        f"warming up for {warmup} s")
+        f"load profile {profile!r} started, warming up for {warmup} s")
     reset_workers()
+    profile_started = time.time()
+    apply_named_profile(profile)  # restarts the profile, so every run gets the same load
     time.sleep(warmup)
 
     output_path = os.path.join(out_dir, f"{controller}_{repeat}_output.txt")
@@ -177,7 +214,10 @@ def run_one(run, controller, repeat, warmup, run_seconds, out_dir):
         status = f"{status}, no CSV written"
         log(f"run {run}: {controller} stopped ({status})")
 
-    row = {"run": run, "controller": controller, "repeat": repeat, "start": start,
+    save_worker_logs(out_dir, f"{controller}_{repeat}", profile_started, time.time())
+
+    row = {"run": run, "controller": controller, "repeat": repeat, "profile": profile,
+           "start": start,
            "end": end, "csv": os.path.relpath(target, ROOT), "status": status,
            "duration_s": round((datetime.fromisoformat(end)
                                 - datetime.fromisoformat(start)).total_seconds())}
@@ -208,10 +248,12 @@ def main():
     parser.add_argument("--repeats", type=int, default=3, help="runs per controller (default 3)")
     parser.add_argument("--minutes", type=float, default=10, help="length of each run (default 10)")
     parser.add_argument("--warmup", type=int, default=60, help="seconds at 0.5/0.5 before each run")
-    parser.add_argument("--out-dir", default=os.path.join(ROOT, "data", "runs"))
+    parser.add_argument("--profile", default="sine",
+                        help="load profile from load/profiles/ (default sine)")
+    parser.add_argument("--out-dir", help="where results go (default data/runs/<profile>)")
     args = parser.parse_args()
 
-    out_dir = os.path.abspath(args.out_dir)
+    out_dir = os.path.abspath(args.out_dir or os.path.join(ROOT, "data", "runs", args.profile))
     os.makedirs(out_dir, exist_ok=True)
     LOG_PATH = os.path.join(out_dir, "runner.log")
 
@@ -221,7 +263,7 @@ def main():
     signal.signal(signal.SIGINT, signal.default_int_handler)
     signal.signal(signal.SIGTERM, stop_on_sigterm)
 
-    problems = preflight(out_dir)
+    problems = preflight(out_dir, args.profile)
     if problems:
         for problem in problems:
             log(f"cannot start: {problem}")
@@ -237,14 +279,15 @@ def main():
     run_seconds = round(args.minutes * 60)
     total = len(plan) * (args.warmup + run_seconds)
     finish = datetime.now() + timedelta(seconds=total)
-    log(f"starting {len(plan)} runs ({args.repeats} x {', '.join(CONTROLLERS)}), "
-        f"{args.minutes:g} min each after {args.warmup} s warm-up. "
+    log(f"starting {len(plan)} runs ({args.repeats} x {', '.join(CONTROLLERS)}) with load "
+        f"profile {args.profile!r}, {args.minutes:g} min each after {args.warmup} s warm-up. "
         f"About {total / 60:.0f} min, done around {finish:%H:%M}. pid {os.getpid()}")
 
     results = []
     try:
         for run, (controller, repeat) in enumerate(plan, start=1):
-            results.append(run_one(run, controller, repeat, args.warmup, run_seconds, out_dir))
+            results.append(run_one(run, controller, repeat, args.profile, args.warmup,
+                                   run_seconds, out_dir))
     except KeyboardInterrupt:
         log("stopped by user before all runs were done")
     finally:

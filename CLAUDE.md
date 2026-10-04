@@ -12,8 +12,19 @@ federated learning.
 - `docker-compose.yml`: 2 workers (`fl-worker-1`, `fl-worker-2`) + cadvisor,
   prometheus (localhost:9090), grafana (localhost:3000)
 - `workload/workload.py`: placeholder load. Trains SGDClassifier on sklearn
-  digits. Demand follows a 120 s sine wave (intensity 0.1 to 1.0). Bursty:
-  each second it runs flat out for "intensity" seconds, then sleeps.
+  digits. Bursty: each second it runs flat out for "intensity" seconds, then
+  sleeps. Intensity comes from a load profile, `load/<worker>.json` (mounted
+  read-only at /load, re-read every second): sine (default: 120 s,
+  0.1 to 1.0), noisy_sine, bursts (seeded), steps, constant. Logs the
+  intended intensity every second ("load t=... intensity=...", ground truth).
+  Timed with time.monotonic(), so wall-clock jumps don't freeze it.
+- `scripts/set_load.py`: change a worker's load live, e.g.
+  `set_load.py fl-worker-2 bursts --gap 60` or `set_load.py all profile steps`.
+  Named profiles (both workers) are in `load/profiles/`.
+- `scripts/run_experiments.py --profile <name>`: alternating reactive/proactive
+  runs; restarts the profile before every run so all runs see the same load;
+  saves CSVs, runs.csv and the workers' log lines to `data/runs/<profile>/`.
+- The controllers never read `load/`: they only see Prometheus and the CPU limits.
 - `controller/set_cpu.py`: sets a container's CPU limit (cpu_period=100000,
   cpu_quota)
 - `controller/reactive.py`: reactive baseline controller (done, committed).
@@ -52,6 +63,11 @@ federated learning.
   behind an ideal split; the throttle-ratio version stays at 0.5/0.5.
   Weak spots: the 30 s rate window causes most of the delay, and at a demand
   trough both predictions can clip to 0, giving one-cycle 0.9/0.1 splits.
+
+- After a boot the system clock can start about 3 h ahead and be corrected by
+  NTP later (2026-10-02, 2026-10-04). Containers started in that window log
+  future timestamps, and Prometheus then rejects all new samples ("out of
+  bounds") for up to an hour, so Grafana and the controllers see no data.
 
 ## Conventions
 

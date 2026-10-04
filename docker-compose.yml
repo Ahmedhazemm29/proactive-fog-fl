@@ -13,7 +13,12 @@ services:
     cpu_quota: 50000        # 0.5 CPU starting budget
     mem_limit: 512m
     environment:
-      PERIOD_S: "120"       # length of one load cycle in seconds
+      # This worker's load profile, re-read every second (see scripts/set_load.py)
+      LOAD_FILE: /load/fl-worker-1.json
+    volumes:
+      # The whole folder, not single files: set_load.py replaces files by
+      # renaming, which a single-file mount would not see.
+      - ./load:/load:ro
     restart: unless-stopped
 
   worker-2:
@@ -25,10 +30,11 @@ services:
     cpu_quota: 50000        # 0.5 CPU starting budget
     mem_limit: 512m
     environment:
-      PERIOD_S: "120"       # length of one load cycle in seconds
+      LOAD_FILE: /load/fl-worker-2.json
+    volumes:
+      - ./load:/load:ro
     restart: unless-stopped
 
-    
   # ---------- Monitoring stack ----------
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
