@@ -64,10 +64,15 @@ federated learning.
   Weak spots: the 30 s rate window causes most of the delay, and at a demand
   trough both predictions can clip to 0, giving one-cycle 0.9/0.1 splits.
 
-- After a boot the system clock can start about 3 h ahead and be corrected by
-  NTP later (2026-10-02, 2026-10-04). Containers started in that window log
-  future timestamps, and Prometheus then rejects all new samples ("out of
-  bounds") for up to an hour, so Grafana and the controllers see no data.
+- After a boot the system clock could start about 3 h ahead and be corrected by
+  NTP later (2026-10-02, 2026-10-04). Containers started in that window logged
+  future timestamps, and Prometheus then rejected all new samples ("out of
+  bounds") until real time caught up, about 3 h, so Grafana and the
+  controllers saw no data. Fixed 2026-10-04: the RTC is now kept in local
+  time, and `monitoring/prometheus.yml` sets `out_of_order_time_window: 3h`,
+  so Prometheus stores such samples anyway. Leftover: the old workers have 4
+  samples stamped 2026-10-04 18:40:12-18:40:27 local, which add about 0.3 CPU
+  to each worker's usage query from 18:40:17 to 18:40:52 local.
 
 ## Conventions
 
