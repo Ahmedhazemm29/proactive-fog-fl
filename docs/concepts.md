@@ -62,3 +62,48 @@ Analogy: two people walking into a restaurant 20 seconds apart. The first one al
 Believing proactive is better is not enough. The thesis has to prove it with numbers. An older reactive run used different worker timing and conditions, so comparing it to a new proactive run would be like comparing two race cars on different tracks in different weather.
 
 Robotics analogy: when tuning a new controller for a robot arm, you run the old and the new controller on the same trajectory, then compare the errors side by side.
+
+---
+
+## What happens when both workers need more than the budget?
+
+The budget is 1.0 CPU in total. If worker 1 has 0.8 and worker 2 needs more than the remaining 0.2, worker 2 is throttled and slows down. There is no hidden extra CPU.
+
+When both workers are hungry at the same time, the controller has to decide who loses, and by how much. Our proactive controller splits the budget in proportion to predicted demand. Example: worker 1 predicts 1.0 and worker 2 predicts 0.5. Together they want 1.5, but only 1.0 exists:
+
+```
+worker 1: 1.0 / 1.5 = 0.67
+worker 2: 0.5 / 1.5 = 0.33
+```
+
+Both get less than they want, each in proportion to their hunger.
+
+Proportional is only one possible rule:
+
+| Rule | Idea |
+|---|---|
+| Proportional (current) | Share the shortage fairly |
+| Equal | 0.5 / 0.5, ignore demand |
+| Help the straggler | Give more to whoever would finish last |
+
+In federated learning, a round only ends when the slowest client finishes, so "help the straggler" may beat "fair". This is a design choice worth testing with real FL.
+
+The other way out is to grow the budget itself, for example by adding another machine when everyone is hungry. That is horizontal scaling, as Kubernetes does in the related papers.
+
+Why the two limit lines mirror each other in the plots: the controller always splits exactly 1.0, so every step up for one worker is the same step down for the other. The mirroring comes from the fixed budget, the 120 s rhythm comes from the workload.
+
+---
+
+## Limitation: our test workload is the easiest possible case
+
+The workers' demand follows a smooth sine wave that repeats every 120 s. Real demand can jump suddenly, without warning. So the measured improvement of proactive over reactive (+12% training speed) is probably optimistic.
+
+The controller is not cheating, though. It never reads the sine formula or the intensity value. It only sees CPU usage measured from outside by Prometheus, like on a real system. It found the rhythm by observation.
+
+Real workloads are not fully random either. Websites are busy by day and quiet at night, and federated learning repeats a train, wait, train, wait cycle. Proactive scaling helps where patterns exist. Truly sudden spikes cannot be predicted by anyone, which is why real systems often combine both: predict when possible, react fast when a surprise hits (hybrid scaling).
+
+Next experiments to make the result stronger:
+1. Sudden bursts at random moments
+2. A noisy wave (pattern plus randomness)
+3. Real FL rounds, where the rhythm comes from training itself
+4. A real recorded trace, such as the Bitbrains dataset used by Kumar et al.

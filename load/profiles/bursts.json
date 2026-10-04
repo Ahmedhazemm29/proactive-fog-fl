@@ -1,0 +1,4 @@
+{
+  "fl-worker-1": {"mode": "bursts", "base": 0.1, "height": 1.0, "duration": 20, "gap": 60, "seed": 1},
+  "fl-worker-2": {"mode": "bursts", "base": 0.1, "height": 1.0, "duration": 20, "gap": 60, "seed": 2}
+}

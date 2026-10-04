@@ -1,6 +1,16 @@
 global:
   scrape_interval: 5s
 
+# Accept samples up to 3 h older than the newest one stored.
+# After some boots the system clock started 3 h ahead and was corrected a
+# little later (2026-10-02, 2026-10-04). The samples stored in between had
+# future timestamps, and Prometheus then rejected every new sample as "out of
+# bounds" until real time caught up with them, about 3 h later. With this
+# window it keeps storing them.
+storage:
+  tsdb:
+    out_of_order_time_window: 3h
+
 scrape_configs:
   - job_name: cadvisor
     static_configs:

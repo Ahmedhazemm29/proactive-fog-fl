@@ -10,10 +10,27 @@ federated learning.
 ## Files
 
 - `docker-compose.yml`: 2 workers (`fl-worker-1`, `fl-worker-2`) + cadvisor,
-  prometheus (localhost:9090), grafana (localhost:3000)
+  prometheus (localhost:9090, keeps data 1 year instead of the default 15
+  days, so experiment runs are not deleted), grafana (localhost:3000)
 - `workload/workload.py`: placeholder load. Trains SGDClassifier on sklearn
-  digits. Demand follows a 120 s sine wave (intensity 0.1 to 1.0). Bursty:
-  each second it runs flat out for "intensity" seconds, then sleeps.
+  digits. Bursty: each second it runs flat out for "intensity" seconds, then
+  sleeps. Intensity comes from a load profile, `load/<worker>.json` (mounted
+  read-only at /load, re-read every second): sine (default: 120 s,
+  0.1 to 1.0), noisy_sine, bursts (seeded), steps, constant. Logs the
+  intended intensity every second ("load t=... intensity=...", ground truth).
+  Timed with time.monotonic(), so wall-clock jumps don't freeze it.
+- `scripts/set_load.py`: change a worker's load live, e.g.
+  `set_load.py fl-worker-2 bursts --gap 60` or `set_load.py all profile steps`.
+  Named profiles (both workers) are in `load/profiles/`.
+- `scripts/run_experiments.py --profile <name>`: alternating reactive/proactive
+  runs; restarts the profile before every run so all runs see the same load;
+  saves CSVs, runs.csv and the workers' log lines to `data/runs/<profile>/`.
+- The controllers never read `load/`: they only see Prometheus and the CPU limits.
+- `analysis/compare_runs.py --runs-dir data/runs/<profile> --results
+  results/<profile>/comparison.md --figures-dir results/<profile>/figures`:
+  mean ± sd per controller and figures per run (the 2 October sine runs are
+  in `results/comparison.md` and `figures/`). `analysis/summarize_profiles.py`
+  prints the tables of `results/profiles_summary.md`.
 - `controller/set_cpu.py`: sets a container's CPU limit (cpu_period=100000,
   cpu_quota)
 - `controller/reactive.py`: reactive baseline controller (done, committed).
@@ -52,6 +69,27 @@ federated learning.
   behind an ideal split; the throttle-ratio version stays at 0.5/0.5.
   Weak spots: the 30 s rate window causes most of the delay, and at a demand
   trough both predictions can clip to 0, giving one-cycle 0.9/0.1 splits.
+
+- After a boot the system clock could start about 3 h ahead and be corrected by
+  NTP later (2026-10-02, 2026-10-04). Containers started in that window logged
+  future timestamps, and Prometheus then rejected all new samples ("out of
+  bounds") until real time caught up, about 3 h, so Grafana and the
+  controllers saw no data. Fixed 2026-10-04: the RTC is now kept in local
+  time, and `monitoring/prometheus.yml` sets `out_of_order_time_window: 3h`,
+  so Prometheus stores such samples anyway. Leftover: the old workers have 4
+  samples stamped 2026-10-04 18:40:12-18:40:27 local, which add about 0.3 CPU
+  to each worker's usage query from 18:40:17 to 18:40:52 local.
+
+- Load profiles, 3 x 10 min per controller (sine 2026-10-02, bursts and
+  noisy_sine 2026-10-04): proactive beat reactive in every run. Training
+  speed +12% (sine), +30% (noisy_sine), +136% (bursts). Reactive is so late
+  that busy workers get no more CPU than idle ones; under bursts an idle
+  worker sits at its 20% shrink threshold, so reactive shrinks both and hands
+  out only 0.49 of the 1.0 budget. Proactive follows 2-minute waves well but
+  sees 20 s spikes late (30 s window). Not yet separated: prediction vs
+  always splitting the full budget (try a 0 s horizon). The 2 October sine
+  had the workers about 20 s apart; today's sine profile has them half a
+  wave apart. See `results/profiles_summary.md`.
 
 ## Conventions
 
