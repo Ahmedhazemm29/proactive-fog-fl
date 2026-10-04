@@ -10,7 +10,8 @@ federated learning.
 ## Files
 
 - `docker-compose.yml`: 2 workers (`fl-worker-1`, `fl-worker-2`) + cadvisor,
-  prometheus (localhost:9090), grafana (localhost:3000)
+  prometheus (localhost:9090, keeps data 1 year instead of the default 15
+  days, so experiment runs are not deleted), grafana (localhost:3000)
 - `workload/workload.py`: placeholder load. Trains SGDClassifier on sklearn
   digits. Bursty: each second it runs flat out for "intensity" seconds, then
   sleeps. Intensity comes from a load profile, `load/<worker>.json` (mounted
