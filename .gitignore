@@ -6,3 +6,4 @@ data/
 # Live load profiles (written by scripts/set_load.py); named ones in load/profiles/ are tracked
 load/fl-worker-*.json
 load/*.tmp
+CLAUDE.md
