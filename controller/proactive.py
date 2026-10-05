@@ -19,8 +19,13 @@ Every LOOP_SECONDS it runs one cycle of:
     5. LOG      - print the decision and append it to a CSV file
 
 Usage:  python controller/proactive.py      (stop with Ctrl+C)
+        python controller/proactive.py --predict-ahead 0
+            No prediction: split the budget by each worker's line value now,
+            not 10 seconds ahead. Used to test what the prediction adds.
 """
+import argparse
 import csv
+import math
 import os
 import time
 from collections import deque
@@ -43,7 +48,7 @@ from set_cpu import set_cpus
 LOOP_SECONDS = 5            # how often we run one full cycle
 
 HISTORY_SIZE = 6            # readings kept per worker (6 x 5 s = 30 s)
-PREDICT_AHEAD_SECONDS = 10  # how far into the future we follow the line
+PREDICT_AHEAD_SECONDS = 10  # how far into the future we follow the line (--predict-ahead)
 
 MAX_TOTAL = 1.0             # CPUs shared by all workers together
 MIN_LIMIT = 0.1             # a single worker never gets less than this
@@ -104,10 +109,12 @@ def estimate_demand(usage, throttled_rate):
     return usage + throttled_rate
 
 
-def predict(history):
+def predict(history, ahead=PREDICT_AHEAD_SECONDS):
     """
     Fit a straight line through a worker's recent demand and follow it
-    PREDICT_AHEAD_SECONDS into the future.
+    `ahead` seconds into the future (PREDICT_AHEAD_SECONDS unless the
+    command line says otherwise). With ahead = 0 nothing is predicted: the
+    result is the line's value now.
 
     history = [(time_in_seconds, demand), ...], oldest first.
     Returns the predicted demand, or None while there are fewer than
@@ -118,7 +125,7 @@ def predict(history):
 
     # x = time in seconds, counted from the newest reading. The readings sit
     # at roughly -25, -20, ..., -5, 0, so the future point we want is simply
-    # x = PREDICT_AHEAD_SECONDS.  y = estimated demand.
+    # x = ahead.  y = estimated demand.
     newest_time = history[-1][0]
     xs = [t - newest_time for t, demand in history]
     ys = [demand for t, demand in history]
@@ -136,7 +143,7 @@ def predict(history):
     # clipped at 0, a tiny difference (0.07 vs 0.00) would decide the whole
     # split and swing it to 0.90/0.10 for one cycle. Clipping at MIN_LIMIT
     # makes near-idle workers count as equal, so they share the budget evenly.
-    predicted = slope * PREDICT_AHEAD_SECONDS + intercept
+    predicted = slope * ahead + intercept
     return max(predicted, MIN_LIMIT)
 
 
@@ -205,9 +212,9 @@ def decide(predictions, limits):
     """
     Work out the new limit for every worker.
 
-    predictions = {"fl-worker-1": 0.45, ...}  predicted demand
-                  PREDICT_AHEAD_SECONDS from now (None for a worker
-                  without enough history yet)
+    predictions = {"fl-worker-1": 0.45, ...}  predicted demand, by
+                  default PREDICT_AHEAD_SECONDS from now (None for a
+                  worker without enough history yet)
     limits      = {"fl-worker-1": 0.50, ...}  CPUs currently allowed
     Returns (new_limits, reason).
     """
@@ -261,7 +268,7 @@ def append_to_csv(timestamp, name, usage, old_limit, new_limit, predicted,
 # ----------------------------------------------------------------------
 # Main loop: OBSERVE -> PREDICT -> DECIDE -> ACT -> LOG, forever
 # ----------------------------------------------------------------------
-def main():
+def main(predict_ahead=PREDICT_AHEAD_SECONDS):
     client = docker.from_env()
 
     # The last HISTORY_SIZE demand estimates of each worker, as (time, demand)
@@ -269,6 +276,9 @@ def main():
     history = {name: deque(maxlen=HISTORY_SIZE) for name in WORKERS}
 
     print(f"Proactive controller started. Logging to {os.path.abspath(LOG_FILE)}")
+    if predict_ahead != PREDICT_AHEAD_SECONDS:
+        print(f"--predict-ahead {predict_ahead:g}: following each line {predict_ahead:g} s "
+              f"ahead instead of {PREDICT_AHEAD_SECONDS} s.")
     print("Press Ctrl+C to stop.\n")
 
     while True:
@@ -298,7 +308,7 @@ def main():
         demand = {name: estimate_demand(usage[name], throttled[name]) for name in WORKERS}
         for name in WORKERS:
             history[name].append((now, demand[name]))
-        predictions = {name: predict(history[name]) for name in WORKERS}
+        predictions = {name: predict(history[name], predict_ahead) for name in WORKERS}
 
         # 3. DECIDE: split the budget.
         new_limits, reason = decide(predictions, limits)
@@ -325,8 +335,23 @@ def main():
         time.sleep(LOOP_SECONDS)
 
 
+def parse_args(argv=None):
+    """The command line. Without options everything is as before: 10 s ahead."""
+    parser = argparse.ArgumentParser(description="Proactive CPU controller (stop with Ctrl+C).")
+    parser.add_argument("--predict-ahead", type=float, default=PREDICT_AHEAD_SECONDS,
+                        metavar="SECONDS",
+                        help=f"how far ahead to follow each worker's line (default "
+                             f"{PREDICT_AHEAD_SECONDS}). 0 = no prediction: split the budget "
+                             "by the line's value now")
+    args = parser.parse_args(argv)
+    if not (args.predict_ahead >= 0 and math.isfinite(args.predict_ahead)):
+        parser.error("--predict-ahead must be a number of seconds, 0 or more")
+    return args
+
+
 if __name__ == "__main__":
+    args = parse_args()
     try:
-        main()
+        main(args.predict_ahead)
     except KeyboardInterrupt:
         print("\nController stopped.")
