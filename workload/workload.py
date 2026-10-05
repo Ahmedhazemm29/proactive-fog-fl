@@ -24,9 +24,19 @@ exactly the same load every time they are replayed.
 
 Without a load file the worker runs the default 120 s sine wave.
 
+"Spike now" (scripts/control_page.py, or set_load.py <worker> spike) adds one
+extra spike on top of the profile. It is a second small file next to the load
+file, e.g. /load/fl-worker-1.spike.json = {"height": 0.5, "duration": 30}:
+for the next `duration` seconds the intensity is raised by `height` (to at
+most 1.0). The profile keeps running: its t does not start again. A spike
+file that is already there when the worker starts is old and is ignored, and
+a new profile ends a running spike, so every experiment run starts without one.
+
 Logs:
     every second:   load t=12 mode=bursts intensity=1.000
-                    the intended intensity: ground truth for the analysis
+                    the intended intensity (a spike included): ground truth
+                    for the analysis
+    on a spike:     spike: +0.50 for 30 s
     every 10 s:     t=   120s intensity=0.55 steps/s=  139.5 acc=0.986
                     training speed; drops when the CPU limit is too low
 """
@@ -41,6 +51,8 @@ from sklearn.datasets import load_digits
 from sklearn.linear_model import SGDClassifier
 
 LOAD_FILE = os.getenv("LOAD_FILE", "/load/profile.json")
+# "Spike now": a second file next to the load file, e.g. /load/fl-worker-1.spike.json
+SPIKE_FILE = os.path.splitext(LOAD_FILE)[0] + ".spike.json"
 BATCH = int(os.getenv("BATCH", "256"))
 LOG_EVERY = int(os.getenv("LOG_EVERY_S", "10"))
 
@@ -140,6 +152,30 @@ def read_profile():
 
 
 # ----------------------------------------------------------------------
+# Reading the spike file ("Spike now")
+# ----------------------------------------------------------------------
+def check_spike(spike):
+    """Raise an error if a spike can't be used (the same limits as set_load.py)."""
+    if not 0 <= spike["height"] <= 1:
+        raise ValueError("height must be between 0 and 1")
+    if not spike["duration"] >= 1:
+        raise ValueError("duration must be at least 1 second")
+
+
+def read_spike():
+    """Return (spike, problem), like read_profile(). spike is None without a usable file."""
+    try:
+        with open(SPIKE_FILE) as f:
+            spike = json.load(f)
+        check_spike(spike)
+        return spike, None
+    except FileNotFoundError:
+        return None, None
+    except Exception as error:  # broken JSON, missing or bad values, ...
+        return None, f"{SPIKE_FILE}: {error}"
+
+
+# ----------------------------------------------------------------------
 # Main loop: one slot per second
 # ----------------------------------------------------------------------
 def main():
@@ -151,6 +187,10 @@ def main():
 
     profile = None       # set in the first second: the load file or the default
     last_problem = None
+    # A spike file that is already there at the start is old: it is only
+    # remembered, never played. spike_left counts the seconds still to go.
+    spike, last_spike_problem = read_spike()
+    spike_left = 0
 
     # time.monotonic() only counts forward. The wall clock (time.time()) can
     # jump by hours, e.g. when it is corrected after a boot, and a worker
@@ -173,12 +213,27 @@ def main():
         if new_profile is not None and new_profile != profile:
             profile = new_profile
             profile_start = slot_start
+            spike_left = 0   # a new profile starts without a spike
             note = " (default, no load file)" if profile is DEFAULT_PROFILE else ""
             print(f"load profile: {json.dumps(profile)}{note}")
+
+        # 1b. "Spike now": a new spike file starts one extra spike. The profile
+        #     keeps running (profile_start stays), so its t does not start again.
+        new_spike, spike_problem = read_spike()
+        if spike_problem and spike_problem != last_spike_problem:
+            print(f"spike file problem, ignored: {spike_problem}")
+        last_spike_problem = spike_problem
+        if new_spike is not None and new_spike != spike:
+            spike = new_spike
+            spike_left = round(spike["duration"])
+            print(f"spike: +{spike['height']:.2f} for {spike_left} s")
 
         # 2. How busy to be in this second, logged as ground truth.
         t = slot_start - profile_start
         intensity = intensity_at(profile, t)
+        if spike_left > 0:   # a spike is running: add it, to at most one core
+            intensity = min(1.0, intensity + spike["height"])
+            spike_left -= 1
         print(f"load t={t:.0f} mode={profile['mode']} intensity={intensity:.3f}")
 
         # 3. Train flat out for `intensity` seconds.
