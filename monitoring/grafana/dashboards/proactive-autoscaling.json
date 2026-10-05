@@ -108,10 +108,23 @@
           },
           "editorMode": "code",
           "expr": "rate(container_cpu_usage_seconds_total{name=~\"fl-worker.*\"}[30s])",
-          "instant": true,
-          "legendFormat": "{{name}}",
+          "instant": false,
+          "legendFormat": "{{name}} used",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=~\"fl-worker.*\"}[30s]))\n+ sum by (name) (rate(container_cpu_cfs_throttled_seconds_total{name=~\"fl-worker.*\"}[30s]))",
+          "hide": false,
+          "instant": false,
+          "legendFormat": "{{name}} demand",
+          "range": true,
+          "refId": "B"
         }
       ],
       "title": "Worker CPU usage",
@@ -132,6 +145,6 @@
   "timezone": "browser",
   "title": "Proactive Autoscaling",
   "uid": "ffztsh2nbqneod",
-  "version": 2,
+  "version": 4,
   "weekStart": ""
 }
