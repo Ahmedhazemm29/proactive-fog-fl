@@ -19,9 +19,21 @@ federated learning.
   0.1 to 1.0), noisy_sine, bursts (seeded), steps, constant. Logs the
   intended intensity every second ("load t=... intensity=...", ground truth).
   Timed with time.monotonic(), so wall-clock jumps don't freeze it.
+  "Spike now": `load/<worker>.spike.json` ({"height", "duration"}) adds one
+  spike on top of the profile without restarting it; a spike file present at
+  worker start is ignored and a new profile ends a running spike.
 - `scripts/set_load.py`: change a worker's load live, e.g.
-  `set_load.py fl-worker-2 bursts --gap 60` or `set_load.py all profile steps`.
+  `set_load.py fl-worker-2 bursts --gap 60`, `set_load.py all profile steps`
+  or `set_load.py fl-worker-1 spike --height 0.5 --duration 30`.
   Named profiles (both workers) are in `load/profiles/`.
+- `scripts/control_page.py`: local demo page at http://127.0.0.1:8765
+  (standard library only): per worker mode buttons, sliders applied on
+  release, "Spike now"; "both workers" starts a named profile. Imports
+  set_load.py for checks and writes. Refuses all changes while
+  run_experiments.py runs (runner.pid under data/runs/, or the process).
+- `tests/`: `.venv/bin/python -m unittest discover -s tests -v`. Runs the
+  workload.py from commit c22cdcc and the current one on a fake clock and
+  requires identical output for every profile (no new spike).
 - `scripts/run_experiments.py --profile <name>`: alternating reactive/proactive
   runs; restarts the profile before every run so all runs see the same load;
   saves CSVs, runs.csv and the workers' log lines to `data/runs/<profile>/`.
@@ -49,6 +61,12 @@ federated learning.
   ```
   The usage half is `QUERY` in reactive.py, which proactive.py imports.
 - `monitoring/grafana/dashboards/proactive-autoscaling.json`: exported dashboard
+  (not provisioned; the live copy lives in the grafana-data volume)
+- `monitoring/grafana/dashboards/demo.json`: presentation dashboard "CPU
+  allocation demo" (uid cpu-demo), provisioned by
+  `monitoring/grafana/provisioning/dashboards/demo.yml`; per worker demand
+  (dashed), used and limit (container_spec_cpu_quota / period, thick step),
+  plus both limits together. Only this file is mounted into Grafana.
 - `data/` is git-ignored (CSV logs).
 
 ## Findings so far

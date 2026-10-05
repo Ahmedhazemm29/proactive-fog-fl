@@ -1,0 +1,167 @@
+{
+  "uid": "cpu-demo",
+  "title": "CPU allocation demo",
+  "description": "Per worker: demand (used + throttled, as the controllers estimate it), CPU used, and the CPU limit the controller set. Right: both limits together, which must stay within the 1.0 CPU budget.",
+  "tags": ["demo"],
+  "editable": true,
+  "graphTooltip": 1,
+  "time": { "from": "now-10m", "to": "now" },
+  "refresh": "5s",
+  "timepicker": { "refresh_intervals": ["5s", "10s", "30s", "1m"] },
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Worker 1",
+      "gridPos": { "x": 0, "y": 0, "w": 19, "h": 11 },
+      "interval": "5s",
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "demand",
+          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=\"fl-worker-1\"}[30s])) + sum by (name) (rate(container_cpu_cfs_throttled_seconds_total{name=\"fl-worker-1\"}[30s]))"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "used",
+          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=\"fl-worker-1\"}[30s]))"
+        },
+        {
+          "refId": "C",
+          "legendFormat": "limit",
+          "expr": "max by (name) (container_spec_cpu_quota{name=\"fl-worker-1\"} / container_spec_cpu_period{name=\"fl-worker-1\"})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: CPU cores",
+          "decimals": 2,
+          "min": 0,
+          "max": 1.2,
+          "custom": { "lineWidth": 2, "fillOpacity": 0, "showPoints": "never", "spanNulls": true, "axisSoftMin": 0 }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "demand" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#d95926" } },
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 6] } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "used" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#3987e5" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "limit" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#199e70" } },
+              { "id": "custom.lineWidth", "value": 4 },
+              { "id": "custom.lineInterpolation", "value": "stepAfter" }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Worker 2",
+      "gridPos": { "x": 0, "y": 11, "w": 19, "h": 11 },
+      "interval": "5s",
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "demand",
+          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=\"fl-worker-2\"}[30s])) + sum by (name) (rate(container_cpu_cfs_throttled_seconds_total{name=\"fl-worker-2\"}[30s]))"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "used",
+          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=\"fl-worker-2\"}[30s]))"
+        },
+        {
+          "refId": "C",
+          "legendFormat": "limit",
+          "expr": "max by (name) (container_spec_cpu_quota{name=\"fl-worker-2\"} / container_spec_cpu_period{name=\"fl-worker-2\"})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: CPU cores",
+          "decimals": 2,
+          "min": 0,
+          "max": 1.2,
+          "custom": { "lineWidth": 2, "fillOpacity": 0, "showPoints": "never", "spanNulls": true, "axisSoftMin": 0 }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "demand" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#d95926" } },
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 6] } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "used" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#3987e5" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "limit" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#199e70" } },
+              { "id": "custom.lineWidth", "value": 4 },
+              { "id": "custom.lineInterpolation", "value": "stepAfter" }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Both limits together (budget 1.0)",
+      "gridPos": { "x": 19, "y": 0, "w": 5, "h": 7 },
+      "interval": "5s",
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "both limits",
+          "expr": "sum(max by (name) (container_spec_cpu_quota{name=~\"fl-worker.*\"} / container_spec_cpu_period{name=~\"fl-worker.*\"}))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: CPU cores",
+          "decimals": 2,
+          "min": 0,
+          "max": 1.2,
+          "color": { "mode": "fixed", "fixedColor": "#199e70" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "none",
+        "graphMode": "area",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "text": { "titleSize": 18, "valueSize": 56 }
+      }
+    }
+  ]
+}

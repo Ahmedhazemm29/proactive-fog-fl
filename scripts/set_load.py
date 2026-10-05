@@ -8,11 +8,14 @@ Examples:
     python scripts/set_load.py fl-worker-1 steps --steps 0:0.2,60:0.9 --repeat 120
     python scripts/set_load.py all constant --level 0.6
     python scripts/set_load.py all profile bursts      (named profile, see load/profiles/)
+    python scripts/set_load.py fl-worker-1 spike --height 0.5 --duration 30
+                                  (one extra spike on top; the profile keeps running)
     python scripts/set_load.py fl-worker-1 bursts --help   (all options of a mode)
 
-It writes load/<worker>.json, which docker-compose mounts into the worker
-at /load. Only the workers read these files. The controllers never do: they
-see nothing but Prometheus and the containers' CPU limits.
+It writes load/<worker>.json (a spike: load/<worker>.spike.json), which
+docker-compose mounts into the worker at /load. Only the workers read these
+files. The controllers never do: they see nothing but Prometheus and the
+containers' CPU limits.
 """
 import argparse
 import json
@@ -29,20 +32,37 @@ WORKERS = ["fl-worker-1", "fl-worker-2"]
 # ----------------------------------------------------------------------
 # Writing a worker's load file
 # ----------------------------------------------------------------------
+def write_json(path, data):
+    """Save `data` as JSON at `path` (a profile or a spike file)."""
+    # Write a temporary file first and then rename it: a rename is instant, so
+    # the worker never reads a half-written file.
+    temporary = path + ".tmp"
+    with open(temporary, "w") as f:
+        json.dump(data, f, indent=2)
+    os.replace(temporary, path)
+
+
 def write_profile(worker, profile):
     """
     Save one worker's profile. "set_at" records when, and also makes the file
     differ from the last one, so setting the same profile again replays it.
     """
     profile = dict(profile, set_at=datetime.now().astimezone().isoformat(timespec="seconds"))
-    path = os.path.join(LOAD_DIR, f"{worker}.json")
-    # Write a temporary file first and then rename it: a rename is instant, so
-    # the worker never reads a half-written file.
-    temporary = path + ".tmp"
-    with open(temporary, "w") as f:
-        json.dump(profile, f, indent=2)
-    os.replace(temporary, path)
+    write_json(os.path.join(LOAD_DIR, f"{worker}.json"), profile)
     return profile
+
+
+def write_spike(worker, height, duration):
+    """
+    One extra spike on top of the worker's current load: `height` more for
+    `duration` seconds. It has its own file, load/<worker>.spike.json, because
+    a changed profile file would start the profile again from zero.
+    "set_at" makes the file differ from the last one, so every spike counts.
+    """
+    spike = {"height": height, "duration": duration,
+             "set_at": datetime.now().astimezone().isoformat(timespec="seconds")}
+    write_json(os.path.join(LOAD_DIR, f"{worker}.spike.json"), spike)
+    return spike
 
 
 def apply_named_profile(name, workers=WORKERS):
@@ -126,6 +146,12 @@ def build_parser():
 
     named = modes.add_parser("profile", help="named profile from load/profiles/")
     named.add_argument("name", help="e.g. sine, bursts, steps")
+
+    spike = modes.add_parser("spike", help="one extra spike on top of the current load "
+                                           "(the profile keeps running)")
+    spike.add_argument("--height", type=float, default=0.5,
+                       help="added on top of the current level, at most 1.0 in total (0.5)")
+    spike.add_argument("--duration", type=float, default=30, help="seconds (30)")
     return parser
 
 
@@ -137,6 +163,11 @@ def main():
         if args.name not in named_profiles():
             sys.exit(f"unknown profile {args.name!r}, choose from: {', '.join(named_profiles())}")
         written = apply_named_profile(args.name, workers)
+    elif args.mode == "spike":
+        problems = check({"height": args.height, "duration": args.duration})
+        if problems:
+            sys.exit("not changed: " + "; ".join(problems))
+        written = {worker: write_spike(worker, args.height, args.duration) for worker in workers}
     else:
         # All options of the chosen mode (except the worker) form the profile.
         profile = {key: value for key, value in vars(args).items() if key != "worker"}
