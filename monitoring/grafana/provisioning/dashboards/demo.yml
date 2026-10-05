@@ -1,0 +1,12 @@
+# Load the dashboards in /etc/grafana/dashboards when Grafana starts, and
+# re-read them every 10 s. docker-compose.yml mounts only demo.json there.
+apiVersion: 1
+providers:
+  - name: demo
+    type: file
+    folder: ""                # the General folder
+    disableDeletion: true
+    allowUiUpdates: false     # edit monitoring/grafana/dashboards/demo.json instead
+    updateIntervalSeconds: 10
+    options:
+      path: /etc/grafana/dashboards

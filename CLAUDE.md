@@ -49,6 +49,12 @@ federated learning.
   ```
   The usage half is `QUERY` in reactive.py, which proactive.py imports.
 - `monitoring/grafana/dashboards/proactive-autoscaling.json`: exported dashboard
+  (not provisioned; the live copy lives in the grafana-data volume)
+- `monitoring/grafana/dashboards/demo.json`: presentation dashboard "CPU
+  allocation demo" (uid cpu-demo), provisioned by
+  `monitoring/grafana/provisioning/dashboards/demo.yml`; per worker demand
+  (dashed), used and limit (container_spec_cpu_quota / period, thick step),
+  plus both limits together. Only this file is mounted into Grafana.
 - `data/` is git-ignored (CSV logs).
 
 ## Findings so far
