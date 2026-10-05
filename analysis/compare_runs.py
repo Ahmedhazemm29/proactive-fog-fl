@@ -12,7 +12,8 @@ data/runs/runs.csv. For each run it:
     4. computes averages per worker and in total
 Then it reports every metric as mean and standard deviation across the
 repeats of each controller, in results/comparison.md, and draws the
-figures of every run in figures/ (PDF).
+figures of every run in figures/ (PDF). Runs of proactive_nopred (proactive
+without prediction) get their own rows and difference tables.
 
 Usage:  python analysis/compare_runs.py
         python analysis/compare_runs.py --runs-dir data/runs_test --results /tmp/c.md --figures-dir /tmp/fig
@@ -20,6 +21,7 @@ Needs Prometheus on localhost:9090 and the worker containers still present.
 """
 import argparse
 import csv
+import math
 import os
 import re
 import statistics
@@ -46,7 +48,11 @@ RUNS_DIR = os.path.join(ROOT, "data", "runs")       # written by run_experiments
 RESULTS_FILE = os.path.join(ROOT, "results", "comparison.md")
 FIGURES_DIR = os.path.join(ROOT, "figures")
 STEP_SECONDS = 5          # resolution of the Prometheus range queries
-CONTROLLERS = ["reactive", "proactive"]
+CONTROLLERS = ["reactive", "proactive_nopred", "proactive"]   # order in the tables
+# Pairs (base, other) that get a difference table when both are in the runs.
+# proactive_nopred is proactive without prediction (--predict-ahead 0).
+COMPARISONS = [("reactive", "proactive"), ("reactive", "proactive_nopred"),
+               ("proactive_nopred", "proactive")]
 METRICS = [  # key, column title
     ("demand", "Demand (CPU)"),
     ("used", "CPU used (CPU)"),
@@ -221,20 +227,27 @@ def mean_sd_table(stats):
             for metric, _ in METRICS:
                 m, sd = rows[key][metric]
                 digits = 1 if metric == "steps" else 3
-                cells.append(f"{m:.{digits}f} ± {sd:.{digits}f}")
+                sd_text = "–" if math.isnan(sd) else f"{sd:.{digits}f}"   # "–": a single run
+                cells.append(f"{m:.{digits}f} ± {sd_text}")
             lines.append(f"| {controller} | {label} | " + " | ".join(cells) + " |")
     return "\n".join(lines)
 
 
-def difference_table(stats):
-    """Totals of the proactive controller compared with the reactive one."""
-    lines = ["| Metric (total) | Reactive | Proactive | Difference |", "|---|---:|---:|---:|"]
-    for metric, title in METRICS:
-        r, _ = stats["reactive"]["total"][metric]
-        p, _ = stats["proactive"]["total"][metric]
+def title(controller):
+    """reactive -> Reactive, for headings"""
+    return controller[0].upper() + controller[1:]
+
+
+def difference_table(stats, base="reactive", other="proactive"):
+    """Totals of one controller (other) compared with another (base)."""
+    lines = [f"| Metric (total) | {title(base)} | {title(other)} | Difference |",
+             "|---|---:|---:|---:|"]
+    for metric, column in METRICS:
+        b, _ = stats[base]["total"][metric]
+        o, _ = stats[other]["total"][metric]
         digits = 1 if metric == "steps" else 3
-        lines.append(f"| {title} | {r:.{digits}f} | {p:.{digits}f} | "
-                     f"{p - r:+.{digits}f} ({(p - r) / r:+.0%}) |")
+        lines.append(f"| {column} | {b:.{digits}f} | {o:.{digits}f} | "
+                     f"{o - b:+.{digits}f} ({(o - b) / b:+.0%}) |")
     return "\n".join(lines)
 
 
@@ -253,7 +266,7 @@ def per_run_table(runs):
 
 def write_results(path, runs, stats):
     counts = ", ".join(f"{c}: {sum(r['controller'] == c for r in runs)} runs" for c in stats)
-    text = ["# Reactive vs proactive, repeated runs", "",
+    text = [f"# {title(' vs '.join(stats))}, repeated runs", "",
             f"Repeats: {counts}. Values are mean ± standard deviation across the repeats.",
             "",
             "Unmet demand = average throttled CPU (time per second a worker waited because",
@@ -261,8 +274,10 @@ def write_results(path, runs, stats):
             f"workers. CPU values are Prometheus 30 s rates sampled every {STEP_SECONDS} s; training",
             "speed is the average of the workers' 10 s log reports.",
             "", "## Mean ± standard deviation", "", mean_sd_table(stats), ""]
-    if "reactive" in stats and "proactive" in stats:
-        text += ["## Proactive compared with reactive", "", difference_table(stats), ""]
+    for base, other in COMPARISONS:
+        if base in stats and other in stats:
+            text += [f"## {title(other)} compared with {base}", "",
+                     difference_table(stats, base, other), ""]
     text += ["## Every run (totals)", "", per_run_table(runs), ""]
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "w") as f:

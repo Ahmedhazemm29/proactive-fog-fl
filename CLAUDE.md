@@ -33,16 +33,22 @@ federated learning.
   run_experiments.py runs (runner.pid under data/runs/, or the process).
 - `tests/`: `.venv/bin/python -m unittest discover -s tests -v`. Runs the
   workload.py from commit c22cdcc and the current one on a fake clock and
-  requires identical output for every profile (no new spike).
+  requires identical output for every profile (no new spike). Likewise
+  proactive.py from dbd7e91 vs now on simulated workers (default unchanged).
 - `scripts/run_experiments.py --profile <name>`: alternating reactive/proactive
   runs; restarts the profile before every run so all runs see the same load;
   saves CSVs, runs.csv and the workers' log lines to `data/runs/<profile>/`.
+  `--controllers a,b,...` sets one round's order (a name may repeat; runs are
+  numbered per controller). `proactive_nopred` = proactive.py --predict-ahead 0.
 - The controllers never read `load/`: they only see Prometheus and the CPU limits.
 - `analysis/compare_runs.py --runs-dir data/runs/<profile> --results
   results/<profile>/comparison.md --figures-dir results/<profile>/figures`:
   mean ± sd per controller and figures per run. The 2 October sine runs
   (waves about 20 s apart, old runner) are in `results/comparison.md` and
-  `figures/`; `results/sine/` is the sine profile (waves 60 s apart).
+  `figures/`; `results/sine/` is the sine profile (waves 60 s apart);
+  `results/sine_ablation/` is prediction off (3 proactive_nopred runs plus
+  1 reactive and 1 proactive run of the same session). Training speed comes
+  from `docker logs`, so analyse before the workers are recreated.
   `analysis/summarize_profiles.py` prints the tables of
   `results/profiles_summary.md`.
 - `controller/set_cpu.py`: sets a container's CPU limit (cpu_period=100000,
@@ -53,7 +59,8 @@ federated learning.
 - `controller/proactive.py`: proactive controller (in progress). Keeps last 6
   readings, fits a straight line, predicts 10 s ahead, splits the full 1.0
   budget proportionally to predicted demand, min 0.1, rounded to 0.05.
-  Logs to `data/proactive_log.csv`. Estimated demand per worker =
+  `--predict-ahead SECONDS` (default 10); 0 = no prediction, split by each
+  line's value now. Logs to `data/proactive_log.csv`. Estimated demand per worker =
   usage rate + throttled seconds rate:
   ```
   sum by (name) (rate(container_cpu_usage_seconds_total{name=~"fl-worker.*"}[30s]))
@@ -106,8 +113,8 @@ federated learning.
   that busy workers get no more CPU than idle ones; under bursts an idle
   worker sits at its 20% shrink threshold, so reactive shrinks both and hands
   out only 0.49 of the 1.0 budget. Proactive follows 2-minute waves well but
-  sees 20 s spikes late (30 s window). Not yet separated: prediction vs
-  always splitting the full budget (try a 0 s horizon). See
+  sees 20 s spikes late (30 s window). Prediction vs full-budget split:
+  separated for sine 60 s apart only, see the last point. See
   `results/profiles_summary.md`.
 - Sine offset (2026-10-05): with the waves 60 s apart instead of about 20 s
   (2 October, measured 18.5 s), proactive's training-speed gain rose from
@@ -115,6 +122,17 @@ federated learning.
   points. Reactive barely changed (315 vs 323 steps/s): under sine loads it
   keeps the limits within 0.3-0.7. Measured from the logged load: 59.9-60.0 s
   apart in the runs; noisy_sine's noise shifts its measured offset to ~56 s.
+- Prediction off (2026-10-05, sine 60 s apart, `results/sine_ablation/`):
+  proactive_nopred (--predict-ahead 0) reached about two thirds of
+  proactive's gain over reactive, 64-74% by metric and baseline (training
+  speed 385 steps/s vs 323 reactive and 407 proactive). Every nopred run lay
+  between every reactive and every proactive run. Reactive also hands out
+  1.00 CPU on average here, so the non-prediction part is where the CPU goes
+  (demand-proportional split every 5 s), not how much. Prediction moves the
+  limits ~5 s earlier (they trail the load by 12-13 s instead of 18 s) and
+  widens the split (busy worker 0.76 vs 0.67 CPU). Same-session check (1
+  reactive + 1 proactive run): ~2-3% faster training than 6 h earlier, CPU
+  metrics within 1.7%. Other loads and other horizons not tested.
 
 ## Conventions
 

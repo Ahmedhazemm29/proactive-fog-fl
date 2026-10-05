@@ -16,6 +16,10 @@ means every proactive run was on the same side of every reactive run.
 A second block of tables compares the two sine runs, with the workers'
 waves 20 s apart (2 October) and 60 s apart (sine profile), with the others.
 
+A third block is the prediction-off test on the sine profile: reactive,
+proactive_nopred (proactive with --predict-ahead 0) and proactive, plus one
+reactive and one proactive run from the same session as proactive_nopred.
+
 Usage:  python analysis/summarize_profiles.py
 """
 import cmath
@@ -42,11 +46,21 @@ PROFILES = {
                    "data/runs/noisy_sine/{run}_{worker}.log"),
     # The sine profile (load/profiles/sine.json): waves half a period apart.
     "sine_60s": ("results/sine/comparison.md", "data/runs/sine", "data/runs/sine/{run}_{worker}.log"),
+    # The same profile some hours later: 3 runs without prediction (proactive_nopred)
+    # and, in between, 1 reactive and 1 proactive run to check the session.
+    "sine_ablation": ("results/sine_ablation/comparison.md", "data/runs/sine_ablation",
+                      "data/runs/sine_ablation/{run}_{worker}.log"),
 }
 # The first tables keep the names above; the sine comparison uses clearer ones.
 FIRST_TABLES = ["sine", "bursts", "noisy_sine"]
 OFFSET_TABLES = {"sine": "sine, 20 s apart (2 Oct)", "sine_60s": "sine, 60 s apart",
                  "noisy_sine": "noisy_sine", "bursts": "bursts"}
+# The prediction-off test: (label, profile, controller), in the order of the steps.
+ABLATION = [("reactive", "sine_60s", "reactive"),
+            ("proactive_nopred", "sine_ablation", "proactive_nopred"),
+            ("proactive", "sine_60s", "proactive")]
+SAME_SESSION = [("reactive, same session", "sine_ablation", "reactive"),
+                ("proactive, same session", "sine_ablation", "proactive")]
 METRICS = [  # column in the "Every run" table, title, digits, higher is better?
     ("Training speed (steps/s)", "Training speed (steps/s)", 1, True),
     ("CPU used (CPU)", "CPU used (CPU)", 3, True),
@@ -134,24 +148,35 @@ def load_pairs(profile):
     return pairs
 
 
+def decisions_of(row):
+    """{worker: [(time, new limit), ...]}: the decisions in one run's controller CSV."""
+    decisions = {w: [] for w in WORKERS}
+    for d in csv.DictReader(open(os.path.join(ROOT, row["csv"]))):
+        decisions[d["worker"]].append((datetime.fromisoformat(d["timestamp"]).timestamp(),
+                                       float(d["new_limit"])))
+    return decisions
+
+
+def limit_at(decisions, t):
+    """The limit in force at time t: it holds until the controller's next decision."""
+    before = [limit for when, limit in decisions if when <= t]
+    return before[-1] if before else 0.5    # runs start at 0.5 CPU each
+
+
 def limit_while(profile, controller):
     """
     How the controller handed out CPU: the average total of both limits, and
     a worker's average limit while it was busy (load >= 0.7) and while it was
-    almost idle (load <= 0.3). A limit holds until the controller's next decision.
+    almost idle (load <= 0.3).
     """
     busy, idle, totals = [], [], []
     for row in runs_of(profile):
         if row["controller"] != controller:
             continue
-        decisions = {w: [] for w in WORKERS}   # (time, new limit) from the controller's CSV
-        for d in csv.DictReader(open(os.path.join(ROOT, row["csv"]))):
-            decisions[d["worker"]].append((datetime.fromisoformat(d["timestamp"]).timestamp(),
-                                           float(d["new_limit"])))
+        decisions = decisions_of(row)
         for w in WORKERS:
             for t, load in intended_load(profile, row, w).values():
-                before = [limit for when, limit in decisions[w] if when <= t]
-                limit = before[-1] if before else 0.5    # runs start at 0.5 CPU each
+                limit = limit_at(decisions[w], t)
                 if load >= 0.7:
                     busy.append(limit)
                 elif load <= 0.3:
@@ -177,6 +202,34 @@ def wave_offset(profile, row):
                         for w in WORKERS)
     offset = (shift_2 - shift_1) % PERIOD
     return min(offset, PERIOD - offset)   # how far apart, whichever worker is ahead
+
+
+def wave_size(samples):
+    """Half the swing of the 2-minute wave in the samples (the same sum as wave_shift)."""
+    mean = statistics.mean(value for _, value in samples)
+    z = sum((value - mean) * cmath.exp(-2j * math.pi * t / PERIOD) for t, value in samples)
+    return 2 * abs(z) / len(samples)
+
+
+def limit_delay(profile, controller):
+    """
+    How many seconds a worker's CPU limit trails its load, on average over the
+    runs and both workers: the shift of the limit's 2-minute wave minus the
+    shift of the load's wave. Also returns the size of the limit's wave
+    (wave_size), because a limit that hardly moves has no clear shift.
+    """
+    delays, sizes = [], []
+    for row in runs_of(profile):
+        if row["controller"] != controller:
+            continue
+        decisions = decisions_of(row)
+        for w in WORKERS:
+            load = list(intended_load(profile, row, w).values())
+            limits = [(t, limit_at(decisions[w], t)) for t, _ in load]
+            delay = (wave_shift(limits) - wave_shift(load)) % PERIOD
+            delays.append((delay + PERIOD / 2) % PERIOD - PERIOD / 2)   # between -60 and +60 s
+            sizes.append(wave_size(limits))
+    return statistics.mean(delays), statistics.mean(sizes)
 
 
 def overlaps(reactive, proactive):
@@ -275,6 +328,114 @@ def difference_table(profiles, results):
     return "\n".join(lines)
 
 
+# ----------------------------------------------------------------------
+# 4. The prediction-off test (sine profile, waves 60 s apart)
+# ----------------------------------------------------------------------
+def mean_of(text):
+    """'322.9 ± 3.8' -> 322.9"""
+    return float(text.split(" ± ")[0])
+
+
+def session(profile, controller):
+    """When these runs happened, e.g. '00:06 to 01:12'."""
+    rows = [row for row in runs_of(profile) if row["controller"] == controller]
+    first = min(datetime.fromisoformat(row["start"]) for row in rows)
+    last = max(datetime.fromisoformat(row["end"]) for row in rows)
+    return f"{first:%H:%M} to {last:%H:%M}"
+
+
+def ablation_table(results):
+    """Reactive, proactive without prediction and proactive: mean ± sd, then every run."""
+    lines = ["| Controller | Runs on 5 Oct | " + " | ".join(t for _, t, _, _ in METRICS) + " |",
+             "|---|---|" + "---:|" * len(METRICS)]
+    for label, profile, controller in ABLATION:
+        totals, _, runs = results[profile]
+        cells = [f"{totals[controller][column]} "
+                 f"({', '.join(f'{value:.{digits}f}' for value in runs[controller][column])})"
+                 for column, _, digits, _ in METRICS]
+        lines.append(f"| {label} | {session(profile, controller)} | " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
+def steps_table(results):
+    """
+    What each step adds: from reactive to the full-budget split without
+    prediction, and from there to the split with prediction. "Runs overlap?"
+    as in the other tables, between the runs of the two ends of a step.
+    """
+    (_, p_reactive, reactive), (_, p_nopred, nopred), (_, p_proactive, proactive) = ABLATION
+    steps = [("reactive to proactive_nopred", (p_reactive, reactive), (p_nopred, nopred)),
+             ("proactive_nopred to proactive", (p_nopred, nopred), (p_proactive, proactive)),
+             ("reactive to proactive", (p_reactive, reactive), (p_proactive, proactive))]
+    lines = ["| Step | " + " | ".join(t for _, t, _, _ in METRICS) + " | Runs overlap? |",
+             "|---|" + "---:|" * len(METRICS) + "---|"]
+    for name, (profile_a, a), (profile_b, b) in steps:
+        cells, overlapping = [], []
+        for column, title, digits, _ in METRICS:
+            mean_a = mean_of(results[profile_a][0][a][column])
+            mean_b = mean_of(results[profile_b][0][b][column])
+            cells.append(f"{mean_b - mean_a:+.{digits}f} ({(mean_b - mean_a) / mean_a:+.0%})")
+            if overlaps(results[profile_a][2][a][column], results[profile_b][2][b][column]):
+                overlapping.append(title)
+        verdict = "yes: " + ", ".join(overlapping) if overlapping else "no"
+        lines.append(f"| {name} | " + " | ".join(cells) + f" | {verdict} |")
+    return "\n".join(lines)
+
+
+def gain_share(results):
+    """
+    How much of proactive's gain over reactive proactive_nopred already
+    reaches: once against the earlier 3 + 3 runs, once against the reactive
+    and proactive run of its own session.
+    """
+    (_, p_reactive, reactive), (_, p_nopred, nopred), (_, p_proactive, proactive) = ABLATION
+    baselines = [("the earlier runs (3 reactive, 3 proactive)", p_reactive, p_proactive),
+                 ("the same-session runs (1 reactive, 1 proactive)", "sine_ablation", "sine_ablation")]
+    lines = ["| Share of proactive's gain reached without prediction, against | "
+             + " | ".join(t for _, t, _, _ in METRICS) + " |",
+             "|---|" + "---:|" * len(METRICS)]
+    for name, profile_r, profile_p in baselines:
+        cells = []
+        for column, _, _, _ in METRICS:
+            r = mean_of(results[profile_r][0][reactive][column])
+            n = mean_of(results[p_nopred][0][nopred][column])
+            p = mean_of(results[profile_p][0][proactive][column])
+            cells.append(f"{(n - r) / (p - r):.0%}")
+        lines.append(f"| {name} | " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
+def same_session_table(results):
+    """The one reactive and one proactive run of the new session against the 3 earlier runs."""
+    lines = ["| Controller | Metric | Earlier session, 3 runs | This session, 1 run | "
+             "Difference to the earlier mean |",
+             "|---|---|---:|---:|---:|"]
+    for _, profile, controller in SAME_SESSION:
+        earlier_mean = results["sine_60s"][0][controller]
+        earlier_runs = results["sine_60s"][2][controller]
+        for column, title, digits, _ in METRICS:
+            value = results[profile][2][controller][column][0]
+            mean = mean_of(earlier_mean[column])
+            fmt = lambda v: f"{v:.{digits}f}"
+            lines.append(f"| {controller} | {title} | {fmt(min(earlier_runs[column]))} to "
+                         f"{fmt(max(earlier_runs[column]))} | {fmt(value)} | "
+                         f"{value - mean:+.{digits}f} ({(value - mean) / mean:+.1%}) |")
+    return "\n".join(lines)
+
+
+def ablation_limits_table():
+    """Where each controller put the CPU, and how far its limits trail the load."""
+    lines = ["| Controller | Both limits together | Limit while busy | Limit while idle | "
+             "Size of the limit's wave | Limit trails the load by |",
+             "|---|---:|---:|---:|---:|---:|"]
+    for label, profile, controller in ABLATION + SAME_SESSION:
+        total, busy, idle = limit_while(profile, controller)
+        delay, size = limit_delay(profile, controller)
+        trails = f"{delay:.0f} s" if size >= 0.1 else "-"   # a limit that hardly moves has no clear delay
+        lines.append(f"| {label} | {total:.2f} | {busy:.2f} | {idle:.2f} | {size:.2f} | {trails} |")
+    return "\n".join(lines)
+
+
 def main():
     available = [p for p, (path, _, _) in PROFILES.items() if os.path.exists(os.path.join(ROOT, path))]
     missing = [p for p in PROFILES if p not in available]
@@ -296,6 +457,15 @@ def main():
               + offset_results_table(second, results, OFFSET_TABLES) + "\n")
         print("### Where the controllers put the CPU (CPU limit, cores)\n\n"
               + limits_table(second, OFFSET_TABLES))
+
+    if "sine_ablation" in available and "sine_60s" in available:
+        print("\n## Prediction on or off (sine, waves 60 s apart)\n")
+        offsets = [wave_offset("sine_ablation", row) for row in runs_of("sine_ablation")]
+        print(f"Waves apart in the new runs: {min(offsets):.1f} to {max(offsets):.1f} s\n")
+        print("### Results (totals of both workers)\n\n" + ablation_table(results) + "\n")
+        print("### What each step adds\n\n" + steps_table(results) + "\n\n" + gain_share(results) + "\n")
+        print("### Same session check\n\n" + same_session_table(results) + "\n")
+        print("### Where the controllers put the CPU (CPU limit, cores)\n\n" + ablation_limits_table())
 
 
 if __name__ == "__main__":

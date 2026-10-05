@@ -4,6 +4,12 @@ Experiment runner: repeat the reactive vs proactive comparison.
 The workers run a named load profile from load/profiles/ (--profile, default
 "sine"), so the comparison can be repeated per workload type.
 
+--controllers sets the order of one round (default reactive,proactive). A
+name may appear more than once; each controller's runs are numbered 1, 2, ...
+Besides reactive and proactive there is proactive_nopred: proactive.py with
+--predict-ahead 0, i.e. without prediction. It keeps its own run names
+(proactive_nopred_1.csv, ...) and its own rows in runs.csv.
+
 For every run, alternating reactive, proactive, reactive, ... so that slow
 drift (other load on the machine, temperature, ...) affects both equally:
     1. reset both workers to START_LIMIT CPU and start the load profile from
@@ -26,6 +32,10 @@ Stop early (cleanly):      kill $(cat data/runs/bursts/runner.pid)
 
 Short test run:
     python scripts/run_experiments.py --profile bursts --repeats 2 --minutes 1 --warmup 20 --out-dir data/runs_test
+
+Prediction switched off (3 runs), with one reactive and one proactive run in between:
+    python scripts/run_experiments.py --profile sine --repeats 1 --out-dir data/runs/sine_ablation \\
+        --controllers proactive_nopred,reactive,proactive_nopred,proactive,proactive_nopred
 """
 import argparse
 import csv
@@ -48,20 +58,50 @@ from set_load import apply_named_profile, named_profiles  # noqa: E402  (scripts
 # ----------------------------------------------------------------------
 # Settings
 # ----------------------------------------------------------------------
-CONTROLLERS = ["reactive", "proactive"]  # run order inside each repeat
+CONTROLLERS = ["reactive", "proactive"]  # default run order inside each repeat
 START_LIMIT = 0.5          # CPU per worker at the start of every run
 STOP_TIMEOUT_SECONDS = 20  # how long a controller gets to exit after SIGINT
 RUNS_COLUMNS = ["run", "controller", "repeat", "profile", "start", "end", "duration_s",
                 "csv", "status"]
 
+# What each controller name runs: a script in controller/ and its options.
+COMMANDS = {
+    "reactive": ["reactive.py"],
+    "proactive": ["proactive.py"],
+    # The proactive controller without prediction: it splits the budget by
+    # each worker's fitted demand now instead of 10 s ahead.
+    "proactive_nopred": ["proactive.py", "--predict-ahead", "0"],
+}
 
-def controller_script(name):
-    return os.path.join(ROOT, "controller", f"{name}.py")
+
+def controller_command(name):
+    """The command that starts a controller, e.g. [python, -u, controller/proactive.py, ...]."""
+    script, *options = COMMANDS[name]
+    # -u: unbuffered, so the controller's printout reaches the file right away.
+    return [sys.executable, "-u", os.path.join(ROOT, "controller", script), *options]
 
 
 def controller_log(name):
-    """Where the controller itself writes its CSV (its LOG_FILE)."""
-    return os.path.join(ROOT, "data", f"{name}_log.csv")
+    """
+    Where the controller itself writes its CSV (its LOG_FILE): data/<script>_log.csv.
+    proactive_nopred runs proactive.py, so it writes data/proactive_log.csv too.
+    """
+    script = COMMANDS[name][0]
+    return os.path.join(ROOT, "data", script.replace(".py", "_log.csv"))
+
+
+def make_plan(controllers, repeats):
+    """
+    The runs in order, as (controller, repeat) pairs: `repeats` rounds through
+    `controllers`. Each controller's runs are numbered 1, 2, 3, ... so a name
+    can appear more than once in a round.
+    """
+    plan, count = [], {}
+    for _ in range(repeats):
+        for controller in controllers:
+            count[controller] = count.get(controller, 0) + 1
+            plan.append((controller, count[controller]))
+    return plan
 
 
 # ----------------------------------------------------------------------
@@ -85,12 +125,15 @@ def now_iso():
 # ----------------------------------------------------------------------
 # Checks before starting
 # ----------------------------------------------------------------------
-def preflight(out_dir, profile):
+def preflight(out_dir, profile, controllers):
     """Return a list of problems. The experiment only starts if it is empty."""
     problems = []
     if profile not in named_profiles():
         problems.append(f"unknown load profile {profile!r}, choose from: "
                         f"{', '.join(named_profiles())} (files in load/profiles/)")
+    unknown = [c for c in controllers if c not in COMMANDS]
+    if unknown:
+        problems.append(f"unknown controller {', '.join(unknown)}, choose from: {', '.join(COMMANDS)}")
     pid_file = os.path.join(out_dir, "runner.pid")
     if os.path.exists(pid_file):
         try:
@@ -101,9 +144,10 @@ def preflight(out_dir, profile):
     if os.path.exists(os.path.join(out_dir, "runs.csv")):
         problems.append(f"{out_dir}/runs.csv already exists. Use another --out-dir "
                         "or move the old runs away.")
-    for name in CONTROLLERS:
-        if os.path.exists(controller_log(name)):
-            problems.append(f"{controller_log(name)} exists. The controller would append "
+    # Each log file once: both proactive variants write the same one.
+    for log_file in dict.fromkeys(controller_log(c) for c in controllers if c in COMMANDS):
+        if os.path.exists(log_file):
+            problems.append(f"{log_file} exists. The controller would append "
                             "to it, so move it away first (for example into data/old/).")
     # Another controller changing the limits would spoil every run.
     found = subprocess.run(["pgrep", "-af", r"controller/(reactive|proactive)\.py"],
@@ -159,9 +203,8 @@ def run_one(run, controller, repeat, profile, warmup, run_seconds, out_dir):
 
     output_path = os.path.join(out_dir, f"{controller}_{repeat}_output.txt")
     start = now_iso()
-    # -u: unbuffered, so the controller's printout reaches the file right away.
     with open(output_path, "w") as output:
-        process = subprocess.Popen([sys.executable, "-u", controller_script(controller)],
+        process = subprocess.Popen(controller_command(controller),
                                    cwd=ROOT, stdout=output, stderr=subprocess.STDOUT)
     log(f"run {run}: {controller} started (pid {process.pid}), running {run_seconds / 60:g} min")
 
@@ -245,12 +288,16 @@ def stop_on_sigterm(signum, frame):
 def main():
     global LOG_PATH
     parser = argparse.ArgumentParser(description="Repeat the reactive vs proactive runs.")
-    parser.add_argument("--repeats", type=int, default=3, help="runs per controller (default 3)")
+    parser.add_argument("--repeats", type=int, default=3,
+                        help="rounds through --controllers (default 3, i.e. 3 runs per controller)")
     parser.add_argument("--minutes", type=float, default=10, help="length of each run (default 10)")
     parser.add_argument("--warmup", type=int, default=60, help="seconds at 0.5/0.5 before each run")
     parser.add_argument("--profile", default="sine",
                         help="load profile from load/profiles/ (default sine)")
     parser.add_argument("--out-dir", help="where results go (default data/runs/<profile>)")
+    parser.add_argument("--controllers", type=lambda text: text.split(","), default=CONTROLLERS,
+                        help="run order of one round, comma-separated; a name may repeat "
+                             f"(default {','.join(CONTROLLERS)}; known: {', '.join(COMMANDS)})")
     args = parser.parse_args()
 
     out_dir = os.path.abspath(args.out_dir or os.path.join(ROOT, "data", "runs", args.profile))
@@ -263,7 +310,7 @@ def main():
     signal.signal(signal.SIGINT, signal.default_int_handler)
     signal.signal(signal.SIGTERM, stop_on_sigterm)
 
-    problems = preflight(out_dir, args.profile)
+    problems = preflight(out_dir, args.profile, args.controllers)
     if problems:
         for problem in problems:
             log(f"cannot start: {problem}")
@@ -274,12 +321,11 @@ def main():
     with open(pid_file, "w") as f:
         f.write(str(os.getpid()))
 
-    plan = [(controller, repeat) for repeat in range(1, args.repeats + 1)
-            for controller in CONTROLLERS]
+    plan = make_plan(args.controllers, args.repeats)
     run_seconds = round(args.minutes * 60)
     total = len(plan) * (args.warmup + run_seconds)
     finish = datetime.now() + timedelta(seconds=total)
-    log(f"starting {len(plan)} runs ({args.repeats} x {', '.join(CONTROLLERS)}) with load "
+    log(f"starting {len(plan)} runs ({args.repeats} x {', '.join(args.controllers)}) with load "
         f"profile {args.profile!r}, {args.minutes:g} min each after {args.warmup} s warm-up. "
         f"About {total / 60:.0f} min, done around {finish:%H:%M}. pid {os.getpid()}")
 

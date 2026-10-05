@@ -11,10 +11,12 @@ the same load. The two workers share a budget of 1.0 CPU.
 | bursts | 2026-10-04, 18:42 to 19:47 | [bursts/comparison.md](bursts/comparison.md), [bursts/figures](bursts/figures/) |
 | noisy_sine | 2026-10-04, 19:48 to 20:53 | [noisy_sine/comparison.md](noisy_sine/comparison.md), [noisy_sine/figures](noisy_sine/figures/) |
 | sine, 60 s apart | 2026-10-05, 00:06 to 01:12 | [sine/comparison.md](sine/comparison.md), [sine/figures](sine/figures/) |
+| sine, 60 s apart, without prediction | 2026-10-05, 06:46 to 07:40 | [sine_ablation/comparison.md](sine_ablation/comparison.md), [sine_ablation/figures](sine_ablation/figures/) |
 
 Up to "Where proactive helps and where it doesn't", "sine" means the
 2 October runs, with the two workers' waves about 20 seconds apart. The run
-with the waves 60 seconds apart is compared in its own section after that.
+with the waves 60 seconds apart is compared in its own section after that,
+and the runs without prediction in "Prediction on or off".
 
 ## The three loads
 
@@ -218,16 +220,150 @@ together, so proactive kept the split closer to even, 0.57 against 0.42.
   Reactive's nearly equal speed on both days, 2% apart, suggests these
   matter little, but this comparison cannot rule them out.
 
+## Prediction on or off
+
+Proactive does two things at once. Every 5 seconds it hands out the whole
+1.0 CPU budget, split in proportion to each worker's estimated demand. And
+it predicts: it follows a straight line through each worker's last 30
+seconds of demand 10 seconds into the future. To separate the two, the same
+controller was run without prediction, as `proactive_nopred`
+(`controller/proactive.py --predict-ahead 0`). It splits the budget by each
+line's value now instead of 10 seconds ahead. Everything else stays the
+same, including the clip at 0.1 CPU.
+
+proactive_nopred ran 3 times on the sine profile with the waves 60 seconds
+apart, 10 minutes per run after the usual 60-second warm-up, on 5 October
+from 06:46 to 07:40. That is about six hours after the reactive and
+proactive runs in [sine/comparison.md](sine/comparison.md), with a reboot in
+between. So one reactive and one proactive run were placed between the
+three runs, to check whether the session changes the numbers. The waves were
+59.1 to 60.0 seconds apart in the new runs. Details:
+[sine_ablation/comparison.md](sine_ablation/comparison.md),
+[sine_ablation/figures](sine_ablation/figures/).
+
+Totals of both workers, mean ± standard deviation over 3 runs, then every
+run. reactive and proactive are the earlier runs:
+
+| Controller | Runs on 5 Oct | Training speed (steps/s) | CPU used (CPU) | Unmet demand (CPU) |
+|---|---|---:|---:|---:|
+| reactive | 00:06 to 01:00 | 322.9 ± 3.8 (319.9, 321.4, 327.2) | 0.590 ± 0.003 (0.589, 0.587, 0.593) | 0.602 ± 0.003 (0.603, 0.604, 0.598) |
+| proactive_nopred | 06:46 to 07:40 | 385.3 ± 3.6 (381.1, 386.8, 387.9) | 0.690 ± 0.006 (0.693, 0.693, 0.682) | 0.507 ± 0.005 (0.511, 0.508, 0.501) |
+| proactive | 00:17 to 01:11 | 407.0 ± 5.0 (401.3, 409.5, 410.2) | 0.737 ± 0.012 (0.744, 0.723, 0.743) | 0.462 ± 0.007 (0.466, 0.454, 0.467) |
+
+What each step adds, from the means above. "Runs overlap?" compares the
+runs at the two ends of a step, as in the other tables:
+
+| Step | Training speed (steps/s) | CPU used (CPU) | Unmet demand (CPU) | Runs overlap? |
+|---|---:|---:|---:|---|
+| reactive to proactive_nopred | +62.4 (+19%) | +0.100 (+17%) | -0.095 (-16%) | no |
+| proactive_nopred to proactive | +21.7 (+6%) | +0.047 (+7%) | -0.045 (-9%) | no |
+| reactive to proactive | +84.1 (+26%) | +0.147 (+25%) | -0.140 (-23%) | no |
+
+| Share of proactive's gain reached without prediction, against | Training speed (steps/s) | CPU used (CPU) | Unmet demand (CPU) |
+|---|---:|---:|---:|
+| the earlier runs (3 reactive, 3 proactive) | 74% | 68% | 68% |
+| the same-session runs (1 reactive, 1 proactive) | 64% | 64% | 69% |
+
+### Same session check
+
+| Controller | Metric | Earlier session, 3 runs | This session, 1 run | Difference to the earlier mean |
+|---|---|---:|---:|---:|
+| reactive | Training speed (steps/s) | 319.9 to 327.2 | 332.3 | +9.4 (+2.9%) |
+| reactive | CPU used (CPU) | 0.587 to 0.593 | 0.600 | +0.010 (+1.7%) |
+| reactive | Unmet demand (CPU) | 0.598 to 0.604 | 0.595 | -0.007 (-1.2%) |
+| proactive | Training speed (steps/s) | 401.3 to 410.2 | 415.4 | +8.4 (+2.1%) |
+| proactive | CPU used (CPU) | 0.723 to 0.744 | 0.741 | +0.004 (+0.5%) |
+| proactive | Unmet demand (CPU) | 0.454 to 0.467 | 0.468 | +0.006 (+1.3%) |
+
+Both controllers trained 2 to 3% faster in the new session than before,
+just above the earlier range, while CPU used and unmet demand moved by 1.7%
+or less. So this session gave a little more training per CPU, to both
+controllers alike. Because proactive_nopred only ran in this session, its
+training speed is best compared with the same-session runs: there it
+reached 64% of proactive's gain, against 74% when compared with the
+earlier runs.
+
+### Where the controllers put the CPU
+
+Average CPU limit in cores, as in the earlier sections. "Size of the
+limit's wave" is how far the limit swings up and down with the 2-minute
+load. "Limit trails the load by" is how many seconds the limit's wave comes
+after the load's wave. It is left out where the limit hardly moves.
+
+| Controller | Both limits together | Limit while busy | Limit while idle | Size of the limit's wave | Limit trails the load by |
+|---|---:|---:|---:|---:|---:|
+| reactive | 1.00 | 0.48 | 0.53 | 0.05 | - |
+| proactive_nopred | 1.00 | 0.67 | 0.31 | 0.37 | 18 s |
+| proactive | 1.00 | 0.76 | 0.21 | 0.43 | 13 s |
+| reactive, same session | 1.00 | 0.49 | 0.51 | 0.03 | - |
+| proactive, same session | 1.00 | 0.77 | 0.20 | 0.44 | 12 s |
+
+Without prediction, the limits already follow the load: a busy worker had
+0.67 CPU on average and a quiet one 0.31. With prediction the split is
+wider, 0.76 against 0.21, and earlier: the limits trail the load by 12 to 13
+seconds instead of 18. Compare
+[demand_usage_proactive_nopred_2.pdf](sine_ablation/figures/demand_usage_proactive_nopred_2.pdf)
+with [demand_usage_proactive_1.pdf](sine_ablation/figures/demand_usage_proactive_1.pdf).
+Reactive's limits hardly follow the wave at all.
+
+### Does the gain come from prediction, the full budget, or both?
+
+**Both, and the larger part comes without prediction.** Without prediction,
+proactive already reaches about two thirds of its gain over reactive: 64% to
+74%, depending on the metric and on which runs it is compared with.
+Prediction adds the remaining third: +6% training speed against the earlier
+proactive runs, +8% against the proactive run of the same session. Every
+proactive_nopred run lies between every reactive run and every proactive
+run, on all three metrics and in both sessions.
+
+**"The full budget" means where the CPU goes, not how much.** Under this
+load reactive hands out the whole 1.0 CPU too, on average. The difference is
+how it is shared. Reactive moves 0.1 CPU at a time when a worker's usage
+crosses a threshold, which is too late for a 2-minute wave, so busy and
+quiet workers end up with about the same limit. proactive_nopred re-splits
+the whole budget every 5 seconds in proportion to measured demand, which
+includes the throttled time that usage alone hides. That alone moves the
+CPU to the busy worker.
+
+**Prediction adds timing.** The demand the controllers see is a 30-second
+average, so it runs behind the real load. Following the line 10 seconds
+ahead makes up part of that delay: the limits move about 5 seconds earlier,
+and the busy worker gets 0.76 instead of 0.67 CPU.
+
+### What these runs cannot show
+
+- **The session effect, beyond a rough check.** The same-session check used
+  only 1 reactive and 1 proactive run. Both point the same way, about 2 to
+  3% faster training than before, but one run each cannot tell a session
+  effect from normal run-to-run spread, nor measure it precisely. This is
+  why the share of the gain is given against both baselines.
+- **Other loads.** Only the sine load with the waves 60 seconds apart ran
+  without prediction. Under bursts, reactive left half the budget unused, so
+  the parts may weigh differently there. With the waves close together
+  there is less CPU worth moving at all.
+- **Which part of "no prediction" matters.** The 0-second variant still fits
+  a line through the last 30 seconds, so it uses the recent trend to
+  estimate the demand now. Only the step beyond now is removed. A plain
+  30-second average, and horizons other than 0 and 10 seconds, were not
+  tested, so these runs cannot say whether 10 seconds is the best horizon.
+- **Which part of the split matters.** proactive_nopred differs from
+  reactive in several ways at once: it re-splits the whole budget every
+  cycle, it splits in proportion, and its demand includes throttled time.
+  These runs cannot say how much each of those adds.
+- **Precision.** 3 runs without prediction, and 3 earlier plus 1 new run of
+  each other controller. "Runs overlap: no" shows that the order reactive,
+  proactive_nopred, proactive is consistent, but the shares are rough.
+
 ## Caveats
 
 - **The first sine runs are from another day and an older setup.** They
   used the old built-in sine (both waves about 20 seconds apart) and a
   runner that did not restart the load before each run. The section above
   compares them with a sine run with the waves 60 seconds apart.
-- **Prediction or budget?** These runs cannot tell how much of proactive's
-  gain comes from predicting 10 seconds ahead, and how much from always
-  sharing out the full budget in proportion to demand. A proactive run with
-  a 0-second horizon would separate the two.
+- **Prediction or budget?** Tested only for the sine load with the waves 60
+  seconds apart: there about two thirds of proactive's gain comes without
+  prediction, see "Prediction on or off". For bursts, noisy_sine and the
+  2 October sine it is still open.
 - **Reactive's bursts runs vary a lot** (0.117 to 0.244 CPU used), although
   their load was identical. The runs part ways at the first decision: at
   the 0.5 starting limit, an idle worker's usage is so close to the 20%
@@ -251,6 +387,8 @@ python scripts/run_experiments.py --profile sine
 python analysis/compare_runs.py --runs-dir data/runs/bursts --results results/bursts/comparison.md --figures-dir results/bursts/figures
 python analysis/compare_runs.py --runs-dir data/runs/noisy_sine --results results/noisy_sine/comparison.md --figures-dir results/noisy_sine/figures
 python analysis/compare_runs.py --runs-dir data/runs/sine --results results/sine/comparison.md --figures-dir results/sine/figures
+python scripts/run_experiments.py --profile sine --repeats 1 --out-dir data/runs/sine_ablation --controllers proactive_nopred,reactive,proactive_nopred,proactive,proactive_nopred
+python analysis/compare_runs.py --runs-dir data/runs/sine_ablation --results results/sine_ablation/comparison.md --figures-dir results/sine_ablation/figures
 python analysis/summarize_profiles.py
 ```
 
