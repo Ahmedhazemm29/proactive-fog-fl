@@ -1,0 +1,11 @@
+\chapter{Literature Review}\label{chap:LiteratureReview}
+Literature Review
+
+\section{Thesis Objective}
+
+\section{Thesis Organization}
+
+\section{Fog/Edge Architectures and Hierarchical FL}
+
+% PREVIEW
+Dogani and Khunjush~\cite{dogani2024} propose FedAvg-BiGRU, a proactive autoscaler for Kubernetes at the edge. Federated learning trains a BiGRU workload predictor across edge nodes, so only model updates travel to the cloud instead of raw workload data. The planner then converts multi-step predictions into a number of pods, using the Cool Down Time (CDT) to avoid contradictory scaling actions. In simulation on FIFA World Cup request traces, the approach reduces under-provisioning compared with the reactive Kubernetes autoscaler, at the cost of more over-provisioning. However, the authors scale pods for containerized web applications and use federated learning only to train the predictor. They do not dynamically allocate CPU for containers running federated learning.

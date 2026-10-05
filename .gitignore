@@ -7,3 +7,19 @@ data/
 load/fl-worker-*.json
 load/*.tmp
 CLAUDE.md
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.synctex.gz
+*.bcf
+*.run.xml
+thesis/bachelor.pdf
