@@ -25,7 +25,7 @@ import synthetic_traces as st  # noqa: E402  (scripts/synthetic_traces.py)
 def settings(**changes):
     """The command-line settings match_acf() reads, small enough for a quick test."""
     values = dict(S=2, weights="lag", eps=0.0, lags=50, short_lags=10, short_tol=0.0,
-                  max_iter=20_000)
+                  day_lag=50, day_tol=0.0, max_iter=20_000)
     values.update(changes)
     return types.SimpleNamespace(**values)
 
@@ -61,7 +61,7 @@ class MatchAcf(unittest.TestCase):
         x = smooth_trace()
         rng = np.random.default_rng(3)
         y, info = st.match_acf(x, rng.choice(x, len(x)),
-                               settings(eps=1.0, short_tol=1.0, max_iter=10**6), rng)
+                               settings(eps=1.0, short_tol=1.0, day_tol=1.0, max_iter=10**6), rng)
         self.assertEqual(info["iterations"], 0)   # an easy target is met before the first try
 
 
