@@ -8,7 +8,8 @@ Usage:
     .venv/bin/python scripts/fifa_workload.py --start-day 6 --end-day 6   (one day)
     .venv/bin/python scripts/fifa_workload.py                             (days 5 to 92)
 
-1. DOWNLOAD every wc_day<X>_<Y>.gz of the chosen days into data/raw/fifa/.
+1. DOWNLOAD every wc_day<X>_<Y>.gz of the chosen days into data/raw/fifa/,
+   --jobs files at a time (the server gives each connection only ~0.6 MB/s).
    Files that are already there are skipped, so a re-run is cheap.
 2. COUNT the requests per minute, one file at a time, so memory stays small
    even for all ~1.35 billion requests.
@@ -23,6 +24,7 @@ import re
 import sys
 import urllib.request
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
@@ -156,17 +158,24 @@ def main():
     parser = argparse.ArgumentParser(description="FIFA World Cup 98 logs -> requests per minute.")
     parser.add_argument("--start-day", type=int, default=5, help="first day (default 5)")
     parser.add_argument("--end-day", type=int, default=92, help="last day (default 92)")
+    parser.add_argument("--jobs", type=int, default=4, help="downloads at the same time (default 4)")
     args = parser.parse_args()
     if not 1 <= args.start_day <= args.end_day <= 92:
         parser.error("days must satisfy 1 <= --start-day <= --end-day <= 92")
+    if args.jobs < 1:
+        parser.error("--jobs must be at least 1")
 
     os.makedirs(RAW_DIR, exist_ok=True)
     files = list_files(args.start_day, args.end_day)
     print(f"Days {args.start_day} to {args.end_day}: {len(files)} files")
 
+    # Download first, several files at once. Counting comes after, one file at
+    # a time, so only one file's requests are ever in memory.
+    with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+        paths = list(pool.map(download, files))
+
     counts = Counter()   # minute number since 1970 -> requests
-    for name in files:
-        path = download(name)
+    for name, path in zip(files, paths):
         n = count_minutes(path, counts)
         print(f"  counted {name}: {n} requests")
     if not counts:
