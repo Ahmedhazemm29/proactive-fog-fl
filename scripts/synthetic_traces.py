@@ -9,6 +9,8 @@ Usage:
     .venv/bin/python scripts/synthetic_traces.py --start 1998-06-15 --end 1998-06-21 \\
         --nodes 1 --out-dir data/synthetic/test_week                    (one week, one node)
     .venv/bin/python scripts/synthetic_traces.py                          (all days, 16 nodes)
+    .venv/bin/python scripts/synthetic_traces.py --cdf empirical --resume data/synthetic
+                                       (continue saved traces that hit --max-iter)
 
 STEP 1, CDF matching: fit candidate distributions to X, pick one with
 Koltuk's criteria, and draw X_init: n independent values from it. X_init has
@@ -295,28 +297,70 @@ def match_acf(x, x_init, args, rng, label=""):
                f"worst_gap_lags_1_{args.short_lags}": float(np.max(np.abs(r[short] - target[short]))),
                "iterations": iterations, "accepted": accepted,
                "runtime_s": round(runtime, 1),
-               "us_per_iteration": round(1e6 * runtime / max(iterations, 1), 1)}
+               "us_per_iteration": round(1e6 * runtime / iterations, 1) if iterations else None}
 
 
 # ----------------------------------------------------------------------
 # One node
 # ----------------------------------------------------------------------
-def make_node(node, x, cdf, args):
-    """Draw X_init with seed = node number, then match the ACF. Returns (x_init, y, info)."""
+def make_node(node, x, cdf, args, resume=None):
+    """
+    Draw X_init with seed = node number, then match the ACF. Returns (x_init, y, info).
+
+    resume = (saved trace, that node's entry in the old report.json): continue
+    from the saved trace instead of from X_init. X_init is still drawn (the
+    same seed gives the same draw), to check that the saved trace holds
+    exactly the values of X_init, only in another order, and for the plots.
+    """
     rng = np.random.default_rng(node)
     x_init = draw_initial(x, cdf, rng)
-    y, info = match_acf(x, x_init, args, rng, label=f"node {node:02d}: ")
+    start, before = x_init, {"iterations": 0, "accepted": 0, "runtime_s": 0.0}
+    if resume is not None:
+        start, before = resume
+        if not np.array_equal(np.sort(start), np.sort(x_init)):
+            raise SystemExit(f"node {node:02d}: the saved trace does not have the values of X_init "
+                             "(other window, --cdf or seed?)")
+        # New random positions: a seed made of the node and the iterations done so far.
+        rng = np.random.default_rng([node, before["iterations"]])
+    y, info = match_acf(x, start, args, rng, label=f"node {node:02d}: ")
     info.update(node=node, seed=node, mean=float(y.mean()), max=int(y.max()),
-                acf_error_x_init=info.pop("acf_error_init"))
+                acf_error_x_init=(before["acf_error_x_init"] if resume is not None
+                                  else info["acf_error_init"]),
+                acf_error_at_start=info.pop("acf_error_init"),
+                iterations_this_run=info["iterations"], runtime_s_this_run=info["runtime_s"])
+    # Totals over the first run and every continued run
+    info["iterations"] += before["iterations"]
+    info["accepted"] += before["accepted"]
+    info["runtime_s"] = round(info["runtime_s"] + before["runtime_s"], 1)
     print(f"  node {node:02d}: done, all targets met: {info['all_targets_met']}, "
           f"weighted ACF error {info['acf_error_final']:.2e}, "
           f"lag 1 {info['lag1']:.4f} (real {info['lag1_real']:.4f}), "
           f"lag 10 {info['lag10']:.4f} (real {info['lag10_real']:.4f}), "
           f"lag {args.day_lag} {info[f'lag{args.day_lag}']:.4f} "
           f"(real {info[f'lag{args.day_lag}_real']:.4f}), after "
-          f"{info['iterations']:,} iterations, {info['runtime_s']} s "
-          f"({info['us_per_iteration']} µs per iteration)", flush=True)
+          f"{info['iterations_this_run']:,} iterations in this run "
+          f"({info['iterations']:,} in total), {info['runtime_s_this_run']} s "
+          f"({info['us_per_iteration'] or '-'} µs per iteration)", flush=True)
     return x_init, y, info
+
+
+def load_resume(folder, minutes, nodes):
+    """
+    For --resume: each node's saved trace and its entry in folder/report.json,
+    plus the old report itself.
+    """
+    with open(os.path.join(folder, "report.json")) as f:
+        old = json.load(f)
+    entries = {e["node"]: e for e in old["nodes"]}
+    resume = {}
+    for node in range(nodes):
+        data = np.genfromtxt(os.path.join(folder, f"node_{node:02d}.csv"), delimiter=",", names=True,
+                             dtype=None, encoding="utf-8")
+        if not np.array_equal(data["minute_paris"], minutes):
+            raise SystemExit(f"node {node:02d}: the saved trace covers other minutes; use the same "
+                             "--start and --end as before")
+        resume[node] = (data["requests"].astype(np.int64), entries[node])
+    return resume, old
 
 
 def save_node(path, minutes, y):
@@ -405,6 +449,9 @@ def main():
                         help="nodes computed at the same time")
     parser.add_argument("--plot-nodes", default="0,1", help="nodes to plot (default 0,1)")
     parser.add_argument("--out-dir", default=OUT_DIR, help="output folder (default data/synthetic)")
+    parser.add_argument("--resume", metavar="DIR",
+                        help="continue the traces saved in DIR (node_XX.csv and report.json) "
+                             "instead of starting from X_init; --max-iter counts this run only")
     args = parser.parse_args()
     args.max_iter = int(args.max_iter)
     if args.S < 2:
@@ -423,8 +470,17 @@ def main():
     print(f"Real trace: {n} minutes, {minutes[0]} to {minutes[-1]} (Paris), "
           f"mean {x.mean():.0f}, max {x.max()}, C = variance / mean = {c_real:.0f}")
 
-    # STEP 1
-    if args.cdf == "fit":
+    # STEP 1 (skipped with --resume: the saved traces already have their values)
+    resume = None
+    if args.resume:
+        resume, old = load_resume(args.resume, minutes, args.nodes)
+        if old["cdf"]["method"] != args.cdf:
+            parser.error(f"--resume: those traces were made with --cdf {old['cdf']['method']}")
+        candidates, why = old["cdf"]["candidates"], old["cdf"]["why"]
+        cdf = {"name": old["cdf"]["chosen"], "params": old["cdf"]["params"], "ad": old["cdf"]["ad"],
+               "p": old["cdf"]["p"], "C": old["cdf"]["C_fit"]}
+        print(f"STEP 1: continuing the traces in {os.path.relpath(args.resume, ROOT)}/ ({why})")
+    elif args.cdf == "fit":
         print("STEP 1: fitting distributions")
         candidates = fit_candidates(x.astype(float))
         cdf, why = choose(candidates, c_real)
@@ -442,7 +498,8 @@ def main():
     plot_nodes = {int(k) for k in args.plot_nodes.split(",") if k.strip()}
     nodes = []
     with ProcessPoolExecutor(max_workers=args.jobs) as pool:
-        jobs = [pool.submit(make_node, node, x, cdf, args) for node in range(args.nodes)]
+        jobs = [pool.submit(make_node, node, x, cdf, args, resume and resume[node])
+                for node in range(args.nodes)]
         for job in jobs:
             x_init, y, info = job.result()
             node = info["node"]
@@ -463,6 +520,7 @@ def main():
                      "short_lags": args.short_lags, "short_tol": args.short_tol,
                      "day_lag": args.day_lag, "day_tol": args.day_tol,
                      "max_iter": args.max_iter},
+        "resumed_from": os.path.relpath(args.resume, ROOT) if args.resume else None,
         "nodes": nodes,
         "total_runtime_s": round(time.time() - started, 1),
     }

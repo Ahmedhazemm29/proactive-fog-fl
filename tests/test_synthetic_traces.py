@@ -9,7 +9,11 @@ Tests for scripts/synthetic_traces.py. Run all tests with:
    of X_init, so the distribution from step 1 is kept.
 3. --cdf empirical draws real values with replacement, a different mix per seed.
 4. The 1/lag weights sum to 1 and count short lags most.
+5. --resume continues a saved trace: same values, iterations add up, and a
+   trace with other values is refused.
 """
+import contextlib
+import io
 import os
 import sys
 import types
@@ -63,6 +67,31 @@ class MatchAcf(unittest.TestCase):
         y, info = st.match_acf(x, rng.choice(x, len(x)),
                                settings(eps=1.0, short_tol=1.0, day_tol=1.0, max_iter=10**6), rng)
         self.assertEqual(info["iterations"], 0)   # an easy target is met before the first try
+
+
+class Resume(unittest.TestCase):
+
+    def test_continue_a_saved_trace(self):
+        x = smooth_trace()
+        cdf = {"name": "empirical"}
+        with contextlib.redirect_stdout(io.StringIO()):
+            x_init, first, info1 = st.make_node(3, x, cdf, settings(max_iter=5_000))
+            again, second, info2 = st.make_node(3, x, cdf, settings(max_iter=5_000), resume=(first, info1))
+        self.assertTrue(np.array_equal(again, x_init))        # X_init is drawn again, the same
+        self.assertEqual(sorted(second.tolist()), sorted(x_init.tolist()))
+        self.assertEqual(info2["iterations"], 10_000)          # 5,000 + 5,000
+        self.assertEqual(info2["acf_error_x_init"], info1["acf_error_x_init"])
+        self.assertAlmostEqual(info2["acf_error_at_start"], info1["acf_error_final"], places=12)
+        self.assertLess(info2["acf_error_final"], info1["acf_error_final"])
+
+    def test_refuses_other_values(self):
+        x = smooth_trace()
+        with contextlib.redirect_stdout(io.StringIO()):
+            _, first, info = st.make_node(3, x, {"name": "empirical"}, settings(max_iter=100))
+        first = first.copy()
+        first[0] += 1                                          # no longer a reordering of X_init
+        with self.assertRaises(SystemExit):
+            st.make_node(3, x, {"name": "empirical"}, settings(), resume=(first, info))
 
 
 class EmpiricalDraw(unittest.TestCase):
