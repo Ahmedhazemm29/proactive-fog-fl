@@ -18,6 +18,8 @@ STEP 2, ACF matching (Koltuk's Algorithm 1): repeatedly pick S random
 positions of the trace, shuffle the values there, and keep the change only if
 the ACF got closer to the real one. Shuffling never changes the values
 themselves, so the distribution from step 1 stays exactly the same.
+"Closer" is a weighted error with weight 1/lag (--weights), because our
+predictor looks only a few minutes ahead, so the short lags matter most.
 
 Outputs in --out-dir (default data/synthetic/):
     node_00.csv ...   minute_paris, requests (same minutes as the real trace)
@@ -149,8 +151,10 @@ def choose(candidates, c_real):
 def draw_initial(x, cdf, rng):
     """X_init: len(x) independent values, rounded to whole requests and at least 0."""
     if cdf["name"] == "empirical":
-        # Inverse of the real trace's own CDF = drawing real values at random.
-        return rng.choice(x, len(x))
+        # Inverse of the real trace's own CDF = drawing real values at random,
+        # with replacement: a real minute can appear several times or not at
+        # all, so every node (seed) gets its own mix of values.
+        return rng.choice(x, len(x), replace=True)
     dist = getattr(stats, cdf["name"])(*cdf["params"])
     values = dist.ppf(rng.random(len(x)))
     return np.round(np.clip(values, 0, None)).astype(np.int64)
@@ -176,19 +180,45 @@ def acf(y, lags):
     return c[1:] / c[0]
 
 
-def match_acf(x, x_init, S, eps, lags, max_iter, rng, label=""):
+def lag_weights(kind, lags):
     """
-    Koltuk's Algorithm 1. Returns (Y, info).
+    How much each lag counts in the ACF error, summing to 1.
+    "lag":     weight 1/k, so short lags count most (lags 1-10 get 37% of the
+               weight for 1440 lags, lag 1 alone 13%). Our predictor looks
+               3 to 5 minutes ahead, so the short lags matter most.
+    "uniform": every lag the same, as in Koltuk's plain MSE.
+    """
+    k = np.arange(1, lags + 1)
+    w = 1.0 / k if kind == "lag" else np.ones(lags)
+    return w / w.sum()
+
+
+def match_acf(x, x_init, args, rng, label=""):
+    """
+    Koltuk's Algorithm 1, with a weighted ACF error. Returns (Y, info).
+
+    Stops when the weighted error is at most args.eps AND the ACF at lags
+    1..args.short_lags is within args.short_tol of the real one at every one
+    of those lags, or after args.max_iter iterations.
 
     Speed-up, same result: a shuffle changes only S values, and it keeps the
     mean and the variance (the same numbers in another order). So instead of
     computing the whole ACF again with an FFT every iteration (n log n), we
     update only the products z_t * z_(t+k) that touch the S changed positions
     (S * lags). The result is the same up to rounding; at the end the ACF is
-    computed once more with the FFT and that value is reported.
+    computed once more with the FFT and those values are reported.
     """
-    n = len(x)
+    n, S, lags = len(x), args.S, args.lags
     target = acf(x, lags)
+    w = lag_weights(args.weights, lags)
+    short = slice(0, args.short_lags)              # lags 1..short_lags
+
+    def error(r):
+        return float(np.sum(w * (r - target) ** 2))
+
+    def short_gap(r):
+        return float(np.max(np.abs(r[short] - target[short])))
+
     y = x_init.copy()
     c = autocovariance(y.astype(float), lags)
     c0 = c[0]
@@ -196,11 +226,12 @@ def match_acf(x, x_init, S, eps, lags, max_iter, rng, label=""):
     z = np.zeros(n + 2 * lags)
     z[lags:lags + n] = y - y.mean()
     offsets = np.arange(1, lags + 1)
-    e_min = e_init = float(np.mean((c[1:] / c0 - target) ** 2))
+    e_min = e_init = error(c[1:] / c0)
+    gap_now = short_gap(c[1:] / c0)
 
     start = time.time()
     iterations = accepted = 0
-    while e_min > eps and iterations < max_iter:
+    while (e_min > args.eps or gap_now > args.short_tol) and iterations < args.max_iter:
         iterations += 1
         positions = rng.choice(n, S, replace=False)
         order = rng.permutation(S)
@@ -217,21 +248,32 @@ def match_acf(x, x_init, S, eps, lags, max_iter, rng, label=""):
         if close.any():
             np.add.at(change, gap[close] - 1, np.outer(d, d)[close])
         c_new = c[1:] + change
-        e = float(np.mean((c_new / c0 - target) ** 2))
+        r_new = c_new / c0
+        e = error(r_new)
         if e < e_min:                      # better: keep the shuffle
             e_min = e
+            gap_now = short_gap(r_new)
             c[1:] = c_new
             z[lags + positions] = new
             y[positions] = y[positions][order]
             accepted += 1
         # else: nothing was changed yet, so there is nothing to undo
         if iterations % 1_000_000 == 0:
-            print(f"  {label}{iterations:>11,} iterations, ACF MSE {e_min:.2e}", flush=True)
+            print(f"  {label}{iterations:>11,} iterations, weighted ACF error {e_min:.2e}, "
+                  f"lag 1 {c[1] / c0:.4f} (real {target[0]:.4f}), "
+                  f"worst gap lags 1-{args.short_lags} {gap_now:.4f}", flush=True)
     runtime = time.time() - start
 
-    final = float(np.mean((acf(y, lags) - target) ** 2))   # checked with the FFT
-    return y, {"acf_mse_init": e_init, "acf_mse_final": final, "iterations": iterations,
-               "accepted": accepted, "converged": final <= eps, "runtime_s": round(runtime, 1),
+    r = acf(y, lags)                       # checked with the FFT
+    return y, {"acf_error_init": e_init, "acf_error_final": error(r),
+               "acf_error_tracked": e_min,     # the fast update's own value, should equal the line above
+               "acf_mse_unweighted_final": float(np.mean((r - target) ** 2)),
+               "lag1": float(r[0]), "lag1_real": float(target[0]),
+               "lag5": float(r[4]), "lag5_real": float(target[4]),
+               f"worst_gap_lags_1_{args.short_lags}": short_gap(r),
+               "iterations": iterations, "accepted": accepted,
+               "converged": error(r) <= args.eps and short_gap(r) <= args.short_tol,
+               "runtime_s": round(runtime, 1),
                "us_per_iteration": round(1e6 * runtime / max(iterations, 1), 1)}
 
 
@@ -242,11 +284,12 @@ def make_node(node, x, cdf, args):
     """Draw X_init with seed = node number, then match the ACF. Returns (x_init, y, info)."""
     rng = np.random.default_rng(node)
     x_init = draw_initial(x, cdf, rng)
-    y, info = match_acf(x, x_init, args.S, args.eps, args.lags, args.max_iter, rng,
-                        label=f"node {node:02d}: ")
+    y, info = match_acf(x, x_init, args, rng, label=f"node {node:02d}: ")
     info.update(node=node, seed=node, mean=float(y.mean()), max=int(y.max()),
-                acf_mse_x_init=info.pop("acf_mse_init"))
-    print(f"  node {node:02d}: done, ACF MSE {info['acf_mse_final']:.2e} after "
+                acf_error_x_init=info.pop("acf_error_init"))
+    print(f"  node {node:02d}: done, weighted ACF error {info['acf_error_final']:.2e}, "
+          f"lag 1 {info['lag1']:.4f} (real {info['lag1_real']:.4f}), "
+          f"lag 5 {info['lag5']:.4f} (real {info['lag5_real']:.4f}), after "
           f"{info['iterations']:,} iterations, {info['runtime_s']} s "
           f"({info['us_per_iteration']} µs per iteration)", flush=True)
     return x_init, y, info
@@ -321,7 +364,14 @@ def main():
                         help="fit a distribution (default) or draw from the real values")
     parser.add_argument("--lags", type=int, default=1440, help="ACF compared over lags 1..lags (default 1440 = 1 day)")
     parser.add_argument("--S", type=int, default=2, help="positions shuffled per iteration (default 2)")
-    parser.add_argument("--eps", type=float, default=1e-5, help="stop when the ACF MSE is below this (default 1e-5)")
+    parser.add_argument("--weights", choices=["lag", "uniform"], default="lag",
+                        help="ACF error weights: 1/lag (default, short lags count most) or uniform")
+    parser.add_argument("--eps", type=float, default=1e-5,
+                        help="stop when the weighted ACF error is below this (default 1e-5) ...")
+    parser.add_argument("--short-lags", type=int, default=10,
+                        help="... and the ACF at lags 1..short-lags (default 10) ...")
+    parser.add_argument("--short-tol", type=float, default=0.01,
+                        help="... is within this of the real ACF at each of them (default 0.01)")
     parser.add_argument("--max-iter", type=float, default=2e8, help="safety stop per node (default 2e8)")
     parser.add_argument("--jobs", type=int, default=min(16, os.cpu_count() or 1),
                         help="nodes computed at the same time")
@@ -337,6 +387,8 @@ def main():
     n = len(x)
     if args.lags >= n:
         parser.error(f"--lags must be below the number of minutes ({n})")
+    if not 1 <= args.short_lags <= args.lags:
+        parser.error("--short-lags must be between 1 and --lags")
     c_real = dispersion(x.mean(), x.var())
     print(f"Real trace: {n} minutes, {minutes[0]} to {minutes[-1]} (Paris), "
           f"mean {x.mean():.0f}, max {x.max()}, C = variance / mean = {c_real:.0f}")
@@ -353,8 +405,9 @@ def main():
         print(f"STEP 1: {why}")
 
     # STEP 2, one node per process
-    print(f"STEP 2: matching the ACF for {args.nodes} node(s), S = {args.S}, eps = {args.eps:g}, "
-          f"lags 1..{args.lags}")
+    print(f"STEP 2: matching the ACF for {args.nodes} node(s), S = {args.S}, lags 1..{args.lags} "
+          f"weighted {args.weights}; stop at error {args.eps:g} with lags 1-{args.short_lags} "
+          f"within {args.short_tol:g}")
     os.makedirs(args.out_dir, exist_ok=True)
     plot_nodes = {int(k) for k in args.plot_nodes.split(",") if k.strip()}
     nodes = []
@@ -376,7 +429,9 @@ def main():
         "cdf": {"method": args.cdf, "chosen": cdf["name"], "params": cdf["params"],
                 "ad": cdf["ad"], "ad_critical_5pct": AD_CRITICAL, "p": cdf["p"], "C_fit": cdf["C"],
                 "why": why, "candidates": candidates},
-        "settings": {"S": args.S, "eps": args.eps, "lags": args.lags, "max_iter": args.max_iter},
+        "settings": {"S": args.S, "weights": args.weights, "eps": args.eps, "lags": args.lags,
+                     "short_lags": args.short_lags, "short_tol": args.short_tol,
+                     "max_iter": args.max_iter},
         "nodes": nodes,
         "total_runtime_s": round(time.time() - started, 1),
     }
