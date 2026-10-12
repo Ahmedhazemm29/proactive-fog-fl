@@ -1,0 +1,5 @@
+# For fifa_workload.py, plot_fifa_workload.py and synthetic_traces.py:
+#   .venv/bin/pip install -r scripts/requirements.txt
+numpy
+scipy
+matplotlib
