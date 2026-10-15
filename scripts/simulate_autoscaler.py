@@ -3,8 +3,11 @@ Simulate the autoscalers on every node's test period and compare them
 (Dogani & Khunjush 2024, experiment 5 / Table 11, Section 7.5, p. 17).
 
 Usage:
-    .venv/bin/python scripts/simulate_autoscaler.py
-    .venv/bin/python scripts/simulate_autoscaler.py --mean-pods 20 --out-dir results/autoscaler_20
+    .venv/bin/python scripts/simulate_autoscaler.py                 (main "Dogani-like" run)
+    .venv/bin/python scripts/simulate_autoscaler.py --pods-min 1 --khpa-pods-min 1 \
+        --out-dir results/autoscaler_fair/pods_min_1 --pods-dir data/autoscaler_fair/pods_min_1   (fair run)
+
+Defaults: mean pods 15, threshold 0.7, KHPA Pods_min 1, planner Pods_min 5.
 
 1. PREDICT: the 4 trained models (data/predictors/, patience-10 run) predict
    minutes t .. t+4 for every minute t of each node's test period. A 5th
@@ -200,7 +203,7 @@ def table11_markdown(summary, factors, s, args, n_minutes):
         f"Traffic per node scaled so that the mean demand is {args.mean_pods:g} pods at 100% use "
         f"(factors {min(factors):.4f} to {max(factors):.4f}).",
         f"Settings (Table 3): workload_pod {s.workload_pod:g}, threshold {s.threshold:g}, "
-        f"Pods_min {s.pods_min} (KHPA {args.khpa_pods_min or s.pods_min}), "
+        f"Pods_min {s.pods_min} (KHPA {args.khpa_pods_min}), "
         f"CDT scale-up {s.cdt_up} min, scale-down {s.cdt_down} min, SDR {s.sdr:g}. "
         f"No autoscaling: {s.fixed_pods} pods.",
         "",
@@ -315,7 +318,8 @@ def main():
     parser.add_argument("--threshold", type=float, default=0.7,
                         help="target use of a pod: pods = ceil(load / (workload_pod x threshold)) (default 0.7)")
     parser.add_argument("--pods-min", type=int, default=5)
-    parser.add_argument("--khpa-pods-min", type=int, default=None, help="KHPA's Pods_min (default: --pods-min)")
+    parser.add_argument("--khpa-pods-min", type=int, default=1,
+                        help="KHPA's Pods_min (default 1, closest to Dogani's KHPA; the planner uses --pods-min)")
     parser.add_argument("--cdt-up", type=int, default=3, help="cooldown after a scale-up, minutes (default 3)")
     parser.add_argument("--cdt-down", type=int, default=5, help="cooldown after a scale-down, minutes (default 5)")
     parser.add_argument("--sdr", type=float, default=0.3, help="scale-down rate (default 0.3)")

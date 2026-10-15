@@ -14,6 +14,7 @@ The code and results are in this repository:
 - Step 3, predictors: `predictors/`, `scripts/train_predictors.py`, results in `results/predictors/`
 - Step 4A, autoscaler simulation: `autoscaler/`, `scripts/simulate_autoscaler.py`, results in `results/autoscaler/`
 - Step 4A sensitivity: `scripts/autoscaler_sensitivity.py`, results in `results/autoscaler_sensitivity/`
+- Step 4A fair runs (same Pods_min for KHPA and the planner): results in `results/autoscaler_fair/`
 
 ## Step 1: the real FIFA workload
 
@@ -184,7 +185,7 @@ The code and results are in this repository:
 ### 4A.6 KHPA
 
 - **Dogani:** KHPA computes the pods from the measured CPU usage and a target (Algorithm 1, Section 3.2, p. 5). It waits 3 minutes after a scale-up and 5 after a scale-down.
-- **We:** at minute t, KHPA asks for ceil(traffic of minute t-1 / 500) pods, at least Pods_min = 5. It has the same cooldowns. There is no tolerance band.
+- **We:** at minute t, KHPA asks for ceil(traffic of minute t-1 / 350) pods, with the 70% threshold of entry 4A.9. Its own minimum is 1 pod in the main run and 1 or 5 in the fair runs (entry 4A.10). It has the same cooldowns. There is no tolerance band.
 - **Why:** this is Algorithm 1 with traffic in place of CPU usage. Real Kubernetes ignores changes below 10%. Algorithm 1 has no such band, so we leave it out.
 
 ### 4A.7 Oracle predictor
@@ -202,8 +203,14 @@ The code and results are in this repository:
 ### 4A.9 The 70% threshold
 
 - **Dogani:** gets the optimal pods by dividing the CPU usage by a threshold. The threshold is 70% (Section 7.5, p. 17).
-- **We:** added `--threshold` (default 0.7). Requested pods = ceil(traffic / (500 x 0.7)), so a pod gets 350 requests per minute. KHPA and the planner use the same 350. The traffic scale does not change with the threshold: mean pods 15 still means 15 x 500 requests per minute. So with 0.7 the same traffic needs about 1/0.7 times more pods. No autoscaling stays at 15 pods.
-- **Why:** this is Dogani's text, and it is one candidate cause of the gap to Table 11 (finding 4.9). `results/autoscaler/` was made before this option, with threshold 1.0. It can be reproduced with `--threshold 1.0`, which gives exactly the same numbers.
+- **We:** use threshold 0.7 by default (`--threshold`). Requested pods = ceil(traffic / (500 x 0.7)), so a pod gets 350 requests per minute. KHPA and the planner use the same 350. The traffic scale does not change with the threshold: mean pods 15 still means 15 x 500 requests per minute. So with 0.7 the same traffic needs about 1/0.7 times more pods. No autoscaling stays at 15 pods.
+- **Why:** Dogani states it. Our first run used 1.0 and was far from Table 11 (finding 4.9). That first run can be reproduced exactly with `--threshold 1.0 --khpa-pods-min 5`.
+
+### 4A.10 Main run and fair runs
+
+- **Dogani:** Table 3 lists Pods_min = 5 as a planner parameter (p. 10). The paper does not say whether KHPA has a minimum.
+- **We:** the main "Dogani-like" run in `results/autoscaler/` uses mean pods 15, threshold 0.7, KHPA Pods_min 1 and planner Pods_min 5. Two fair runs in `results/autoscaler_fair/` use the same settings, but give KHPA and the planner the same Pods_min: both 1 (`pods_min_1/`) and both 5 (`pods_min_5/`).
+- **Why:** the main run is the combination closest to Dogani's Table 11 (finding 4.9). But it lets KHPA drop to 1 pod while the planner keeps 5, which favours KHPA at low load. The fair runs compare the two scalers under the same rule.
 
 ## Findings that differ from Dogani
 
@@ -242,22 +249,36 @@ The code and results are in this repository:
 ### 4.7 Most over-provisioning comes from Pods_min
 
 - **Dogani:** KHPA over-provisions much less than the planner: θO 3.05 against 13.04 for FedAvg-BiGRU (Table 11, p. 17).
-- **We found:** θO is about the same for all scalers: 40.6 for KHPA and 43.3 to 43.5 for the four predictors. A third of all minutes need fewer than 5 pods, and the median demand is 7.8 pods (mean over the nodes). Pods_min = 5 alone gives θO = 39.3. The Oracle over-provisions the most (θO 44.7, TO 80.8), even with perfect forecasts. Taking the maximum of the next 3 or 5 minutes and removing only 70% of the extra pods keep more pods than needed. That is the planner's design, not a forecast error. Our θO depends strongly on the traffic scale (entry 4A.2).
+- **We found:** over-provisioning depends mostly on Pods_min.
+  1. In our first run (threshold 1.0, Pods_min 5 for both), θO was about the same for all scalers: 40.6 for KHPA and 43.3 to 43.5 for the four predictors. A third of all minutes needed fewer than 5 pods, and Pods_min = 5 alone gave θO = 39.3.
+  2. In the main run, KHPA may drop to 1 pod. Its θO falls to 2.43, close to Dogani's 3.05. The planner keeps 5 pods and has θO 26.83 with FedAvg-BiGRU.
+  3. In the fair run with Pods_min 1 for both, the planner's θO falls to 11.18 to 11.48, close to Dogani's 12.50 to 16.46.
+- **Also:** the Oracle over-provisions the most of all planners, even with perfect forecasts (θO 13.68 and TO 74.2 in the fair run with Pods_min 1). Taking the maximum of the next 3 or 5 minutes and removing only 70% of the extra pods keep more pods than needed. That is the planner's design, not a forecast error.
 
 ### 4.8 The planner beats KHPA on under-provisioning
 
-- **Dogani:** the planner has the lowest θU and TU, and needs fewer scaling actions than KHPA (Table 11, p. 17).
-- **We found:** the same direction. With FedAvg-BiGRU, θU is 0.42 against 1.38 for KHPA, TU is 6.5% against 16.9%, and there are about half as many scaling actions (674 against 1,378 scale-ups per node). The four predictors are close to each other. CentralBiGRU is best (θU 0.39, εn 5.38), then FedAvg-BiGRU (0.42, 5.21). This is the same order as in Dogani's top two. With the Oracle, θU and TU are 0, so its εn is infinite. Without autoscaling, 15 fixed pods are too few in 28% of the minutes (θU 12.65 against Dogani's 2.01), because our demand has peaks of 188 to 873 pods.
+- **Dogani:** the planner has the lowest θU and TU, needs fewer scaling actions than KHPA, and has a higher εn (Table 11, p. 17).
+- **We found:** the planner has less under-provisioning and fewer scaling actions in every run. Whether it has a higher εn depends on Pods_min. With FedAvg-BiGRU:
+
+  | Run | θU planner / KHPA | TU planner / KHPA | Scale-ups planner / KHPA | εn planner / KHPA |
+  |---|---|---|---|---|
+  | Main (KHPA 1, planner 5) | 0.51 / 2.47 | 8.72 / 24.11 | 879 / 1,963 | 5.48 / 6.84 |
+  | Fair, both 1 | 0.57 / 2.47 | 8.93 / 24.11 | 906 / 1,963 | 6.69 / 6.84 |
+  | Fair, both 5 | 0.51 / 1.60 | 8.72 / 21.26 | 879 / 1,710 | 5.48 / 3.83 |
+
+  With both at 5 the planner wins clearly, as in Dogani. With both at 1, εn is almost a tie. The planner then trades fewer missing pods for more extra pods. KHPA has θO 2.43 against the planner's 11.18.
+- **Order of the predictors:** CentralBiGRU is best, then FedAvg-BiGRU (εn 5.69 and 5.48 in the main run). This is the same order as Dogani's top two. With the Oracle, θU and TU are 0, so its εn is infinite.
+- **No autoscaling:** 15 fixed pods are too few in 38% of the minutes (θU 19.05 against Dogani's 2.01), because our demand has high peaks.
 
 ### 4.9 Which assumptions explain the gap to Table 11
 
 - **Question:** our Table 11 is far from Dogani's. Which of our assumptions causes it?
 - **We tested:** 12 combinations of mean traffic (15, 25 and 40 pods at 100% use), threshold (1.0 and 0.7) and KHPA's Pods_min (5 and 1). The planner keeps Pods_min 5, and no autoscaling keeps 15 pods. We measured the distance to Dogani as the sum of absolute differences on θU, θO, TU and TO, for no autoscaling, KHPA and FedAvg-BiGRU. His TO of 235.34 for no autoscaling is left out.
 - **We found:**
-  1. The closest combination is mean 15, threshold 0.7 and KHPA Pods_min 1, with a distance of 92.3. Our default run (mean 15, threshold 1.0, Pods_min 5) has a distance of 226.6.
+  1. The closest combination is mean 15, threshold 0.7 and KHPA Pods_min 1, with a distance of 92.3. Our first run (mean 15, threshold 1.0, Pods_min 5) had a distance of 226.6. The main run now uses the closest combination (entry 4A.10).
   2. KHPA's Pods_min matters most for KHPA. With Pods_min 1, KHPA's θO drops from 40.6 to 2.2, close to Dogani's 3.05. So Dogani's KHPA probably did not keep 5 pods at low load.
   3. With threshold 0.7 and mean 15, no autoscaling gets θO 149.3, close to Dogani's 152.07.
   4. No combination brings the under-provisioning of no autoscaling close to Dogani. Our θU stays at 12.65 or more against his 2.01, and our TU at 28.4 or more against his 10.76. Our traffic has higher peaks relative to its mean, so 15 fixed pods are too few more often.
   5. FedAvg-BiGRU stays at θO 9 to 44 and TU 6.5 to 16.4, against Dogani's 13.04 and 1.65. No setting matches both.
-  6. In the closest combination KHPA has a higher εn than FedAvg-BiGRU (6.84 against 5.48), because KHPA may drop to 1 pod and the planner may not. A fair test would give both the same Pods_min.
+  6. In the closest combination KHPA has a higher εn than FedAvg-BiGRU (6.84 against 5.48), because KHPA may drop to 1 pod and the planner may not. The fair runs give both the same Pods_min (entry 4A.10, finding 4.8).
 - **Results:** `results/autoscaler_sensitivity/sensitivity.md`.
