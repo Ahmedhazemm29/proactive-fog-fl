@@ -1,4 +1,5 @@
-# For fifa_workload.py, plot_fifa_workload.py, synthetic_traces.py and train_predictors.py:
+# For fifa_workload.py, plot_fifa_workload.py, synthetic_traces.py, train_predictors.py
+# and simulate_autoscaler.py:
 #   .venv/bin/pip install -r scripts/requirements.txt
 numpy
 scipy

@@ -1,0 +1,231 @@
+{
+  "settings": {
+    "traces": "/home/hazem/Desktop/Bachelor/Autoscaling-fifa/data/synthetic",
+    "nodes": 16,
+    "weights_dir": "/home/hazem/Desktop/Bachelor/Autoscaling-fifa/data/predictors",
+    "predictors_report": "/home/hazem/Desktop/Bachelor/Autoscaling-fifa/results/predictors/report.json",
+    "mean_pods": 15,
+    "workload_pod": 500,
+    "pods_min": 5,
+    "cdt_up": 3,
+    "cdt_down": 5,
+    "sdr": 0.3,
+    "fixed_pods": 15,
+    "plot_node": 0,
+    "plot_hours": 5,
+    "out_dir": "/home/hazem/Desktop/Bachelor/Autoscaling-fifa/results/autoscaler",
+    "pods_dir": "/home/hazem/Desktop/Bachelor/Autoscaling-fifa/data/autoscaler"
+  },
+  "table3": {
+    "workload_pod": 500,
+    "pods_min": 5,
+    "cdt_up": 3,
+    "cdt_down": 5,
+    "sdr": 0.3,
+    "fixed_pods": 15
+  },
+  "window": 30,
+  "device": "cuda",
+  "predictors": {
+    "traces": "/home/hazem/Desktop/Bachelor/Autoscaling-fifa/data/synthetic",
+    "nodes": 16,
+    "windows": "30",
+    "rounds": 100,
+    "local_epochs": 1,
+    "fraction": 1.0,
+    "central_epochs": 64,
+    "patience": 10,
+    "units": 64,
+    "dropout": 0.3,
+    "batch_size": 60,
+    "lr": 0.001,
+    "seed": 0,
+    "plot_node": 0,
+    "plot_hours": 6,
+    "out_dir": "/home/hazem/Desktop/Bachelor/Autoscaling-fifa/results/predictors",
+    "weights_dir": "/home/hazem/Desktop/Bachelor/Autoscaling-fifa/data/predictors"
+  },
+  "simulated_minutes_per_node": 25022,
+  "first_minute": "1998-07-09T14:54",
+  "last_minute": "1998-07-26T23:55",
+  "start_pods": 15,
+  "factors": {
+    "node_00": 0.968380199859555,
+    "node_01": 0.5710324507701959,
+    "node_02": 0.9757659392157797,
+    "node_03": 0.5777726702083296,
+    "node_04": 1.6447864882821155,
+    "node_05": 1.9870161914952298,
+    "node_06": 0.4156865808636757,
+    "node_07": 1.6927438731899282,
+    "node_08": 0.4454980617291268,
+    "node_09": 0.7180805037177181,
+    "node_10": 1.9021199375789641,
+    "node_11": 0.6152456162196691,
+    "node_12": 0.46299817585404696,
+    "node_13": 2.440416781807247,
+    "node_14": 1.716250969309356,
+    "node_15": 0.5506326877117512
+  },
+  "mean": {
+    "No autoscaling": {
+      "theta_u": 12.652827479351105,
+      "theta_o": 222.0897865539331,
+      "t_u": 28.39751019103189,
+      "t_o": 69.70191231716089,
+      "scale_ups": 0.0,
+      "scale_downs": 0.0,
+      "mean_pods": 15.0,
+      "speedup": 1.0,
+      "speedup_not_finite": 0,
+      "speedup_zero": [],
+      "speedup_of_means": 1.0
+    },
+    "KHPA": {
+      "theta_u": 1.3757385969523725,
+      "theta_o": 40.5795963266797,
+      "t_u": 16.854168331867953,
+      "t_o": 47.17723403405004,
+      "scale_ups": 1378.375,
+      "scale_downs": 1382.6875,
+      "mean_pods": 16.198505315322514,
+      "speedup": 3.386716923682097,
+      "speedup_not_finite": 0,
+      "speedup_zero": [],
+      "speedup_of_means": 3.345718679687466
+    },
+    "FedAvg-BiGRU": {
+      "theta_u": 0.4213940556654583,
+      "theta_o": 43.40718130721032,
+      "t_u": 6.513767884261849,
+      "t_o": 68.69529813763887,
+      "scale_ups": 674.0,
+      "scale_downs": 659.3125,
+      "mean_pods": 16.713412197266408,
+      "speedup": 5.205047682856746,
+      "speedup_not_finite": 0,
+      "speedup_zero": [],
+      "speedup_of_means": 5.10573138066839
+    },
+    "FedAvg-LSTM": {
+      "theta_u": 0.4514636723281926,
+      "theta_o": 43.32268887536077,
+      "t_u": 6.996093437774759,
+      "t_o": 67.78809647510191,
+      "scale_ups": 679.125,
+      "scale_downs": 663.875,
+      "mean_pods": 16.678168211973464,
+      "speedup": 5.047144981339137,
+      "speedup_not_finite": 0,
+      "speedup_zero": [],
+      "speedup_of_means": 4.9484987994173135
+    },
+    "CentralBiGRU": {
+      "theta_u": 0.39108310307583677,
+      "theta_o": 43.51953054732022,
+      "t_u": 5.761679721844777,
+      "t_o": 69.71689912876668,
+      "scale_ups": 556.6875,
+      "scale_downs": 640.8125,
+      "mean_pods": 16.891450523539284,
+      "speedup": 5.3832494240016855,
+      "speedup_not_finite": 0,
+      "speedup_zero": [],
+      "speedup_of_means": 5.34072449548203
+    },
+    "CentralLSTM": {
+      "theta_u": 0.5036142035925829,
+      "theta_o": 43.25937735700401,
+      "t_u": 7.659759411717689,
+      "t_o": 66.29466069858525,
+      "scale_ups": 643.5,
+      "scale_downs": 650.75,
+      "mean_pods": 16.67750379665894,
+      "speedup": 4.777137479601374,
+      "speedup_not_finite": 0,
+      "speedup_zero": [],
+      "speedup_of_means": 4.735243360367407
+    },
+    "Oracle": {
+      "theta_u": 0.0,
+      "theta_o": 44.739515406251215,
+      "t_u": 0.0,
+      "t_o": 80.77916433538485,
+      "scale_ups": 558.625,
+      "scale_downs": 626.6875,
+      "mean_pods": 17.311443429781793,
+      "speedup": null,
+      "speedup_not_finite": 16,
+      "speedup_zero": [
+        "theta_u",
+        "t_u"
+      ],
+      "speedup_of_means": "inf"
+    }
+  },
+  "dogani_table11": {
+    "No autoscaling": [
+      2.01,
+      152.07,
+      10.76,
+      235.34,
+      1,
+      null,
+      null
+    ],
+    "KHPA": [
+      6.23,
+      3.05,
+      32.05,
+      18.23,
+      1.3,
+      1841,
+      1892
+    ],
+    "CentralBiGRU": [
+      0.23,
+      12.5,
+      1.42,
+      72.2,
+      1.63,
+      976,
+      1009
+    ],
+    "FedAvg-BiGRU": [
+      0.26,
+      13.04,
+      1.65,
+      75.12,
+      1.59,
+      1008,
+      1049
+    ],
+    "CentralLSTM": [
+      0.53,
+      16.12,
+      3.37,
+      87.43,
+      1.42,
+      1144,
+      1171
+    ],
+    "FedAvg-LSTM": [
+      0.61,
+      16.46,
+      3.81,
+      94.53,
+      1.39,
+      1156,
+      1194
+    ]
+  },
+  "dogani_speedup_of_rows": {
+    "No autoscaling": 1.0,
+    "KHPA": 2.8895902205660806,
+    "CentralBiGRU": 7.158483993537677,
+    "FedAvg-BiGRU": 6.551100926547034,
+    "CentralLSTM": 4.187492906578292,
+    "FedAvg-LSTM": 3.8249285868348775
+  },
+  "seconds": 13.2
+}

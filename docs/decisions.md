@@ -1,6 +1,6 @@
 # Decisions log: reproducing Dogani & Khunjush (2024)
 
-This log lists every choice we made while reproducing the prediction part of
+This log lists every choice we made while reproducing the prediction and autoscaling parts of
 Dogani & Khunjush (2024), "Proactive auto-scaling technique for web
 applications in container-based edge computing using federated learning
 model", Journal of Parallel and Distributed Computing 187, 104837.
@@ -12,6 +12,7 @@ The code and results are in this repository:
 - Step 1, real workload: `scripts/fifa_workload.py`
 - Step 2, synthetic node traces: `scripts/synthetic_traces.py`
 - Step 3, predictors: `predictors/`, `scripts/train_predictors.py`, results in `results/predictors/`
+- Step 4A, autoscaler simulation: `autoscaler/`, `scripts/simulate_autoscaler.py`, results in `results/autoscaler/`
 
 ## Step 1: the real FIFA workload
 
@@ -144,6 +145,58 @@ The code and results are in this repository:
 - **We:** compare absolute errors, account for the overlap of multi-step forecasts, and use the Harvey, Leybourne and Newbold small-sample correction. We test FedAvg-BiGRU against each other model at t+3, t+4 and t+5, on all nodes' test windows together.
 - **Why:** absolute errors match the MAE loss. The correction is the standard version of the test.
 
+## Step 4A: autoscaler simulation
+
+### 4A.1 A simulation, not Kubernetes
+
+- **Dogani:** runs the autoscalers on a Kubernetes cluster with CPU-heavy test tasks (Section 7.5, p. 17).
+- **We:** simulate the scalers in Python, one step per minute, on each node's test period. That is 25,022 minutes per node, from 9 July 1998 14:54 to 26 July 23:55. At the start of minute t a scaler may change the pod count. It knows the real traffic up to minute t-1. The planner also gets the forecast for minutes t to t+4. New pods are ready at once and serve minute t. Every scaler starts with 15 pods.
+- **Why:** this isolates the planner and the predictors from cluster effects. A Kubernetes run is a later step.
+
+### 4A.2 Traffic scale
+
+- **Dogani:** uses 15 pods without autoscaling, "equal to the number of pods required to process the typical payload" (p. 17). The paper does not say how large its synthetic traffic is (finding 4.5).
+- **We:** multiply each node's real traffic and its predictions by one factor. The factor makes the node's mean demand over the test period 15 pods (`--mean-pods`). The factors range from 0.42 to 2.44.
+- **Why:** our traffic is much larger than Dogani's. Without scaling, a node would need 6 to 36 pods on average over its test period. Scaling per node gives every node the same mean demand as Dogani's setting.
+
+### 4A.3 Requested pods and Δt
+
+- **Dogani:** requested pods are the CPU usage divided by a threshold of 70% (p. 17). Eqs. 14 to 17 weight each step by Δt, the time between changes (p. 10).
+- **We:** requested pods at minute t = ceil(traffic / 500), at least 1. One step is Δt = 1 minute.
+- **Why:** we have traffic, not CPU usage. 500 requests per pod is workload_pod from Table 3. Summing every minute with Δt = 1 gives the same result as weighting each interval between changes by its length.
+
+### 4A.4 Line 6 of Algorithm 3
+
+- **Dogani:** line 5 computes W_max_ScaleUp, the maximum of the next 3 predictions. Line 6 then divides W_max_ScaleDown by workload_pod (Algorithm 3, p. 9).
+- **We:** use W_max_ScaleUp in line 6.
+- **Why:** W_max_ScaleDown is only computed later, in the scale-down branch (line 10). Line 5 would be useless otherwise. The text says the scale-up uses three steps of prediction (p. 17). So line 6 is a typo.
+
+### 4A.5 Planner details
+
+- **Dogani:** line 3 picks the direction from the next prediction. A scale-down removes only part of the extra pods: Pods_next = Pods_current - floor((Pods_current - Pods_estimate) * (1 - SDR)), at least Pods_min (lines 11 to 13). Every branch sends a command and then waits for the cooldown (Algorithm 3, p. 9).
+- **We:** follow these lines with the Table 3 values: workload_pod 500, Pods_min 5, cooldowns 3 and 5 minutes, SDR 0.3. Two cases are not covered by the pseudocode:
+  1. If the maximum of the next 5 predictions needs more pods than now, the scale-down formula would add pods. We keep the current pods instead.
+  2. A decision that leaves the pod count unchanged is not a scaling action. It starts no cooldown and is not counted.
+- **Why:** case 1 follows the text. Dogani says the planner did not scale down "since it predicted an increase in resource consumption over the next three steps" (p. 17). In case 2, nothing changed, so there is nothing to wait for. Because of the floor, a drop of 1 pod never leads to a scale-down.
+
+### 4A.6 KHPA
+
+- **Dogani:** KHPA computes the pods from the measured CPU usage and a target (Algorithm 1, Section 3.2, p. 5). It waits 3 minutes after a scale-up and 5 after a scale-down.
+- **We:** at minute t, KHPA asks for ceil(traffic of minute t-1 / 500) pods, at least Pods_min = 5. It has the same cooldowns. There is no tolerance band.
+- **Why:** this is Algorithm 1 with traffic in place of CPU usage. Real Kubernetes ignores changes below 10%. Algorithm 1 has no such band, so we leave it out.
+
+### 4A.7 Oracle predictor
+
+- **Dogani:** compares against an "optimal mode" only in Fig. 9 (p. 17 and 18), not in Table 11.
+- **We:** add a 5th predictor, Oracle, that gives the planner the real future traffic.
+- **Why:** it shows what the planner does with perfect forecasts. Any gap between a model and the Oracle comes from forecast errors. Any gap between the Oracle and the requested pods comes from the planner itself.
+
+### 4A.8 Averages and counts
+
+- **Dogani:** does not say how the 16 nodes are combined in Table 11, or what the scaling counts cover.
+- **We:** compute all metrics per node and report the mean over the 16 nodes. The counts are per node over its test period. εn is computed per node against that node's no-autoscaling run, then averaged. When εn divides by 0, we report it as infinite and name the metric that is 0.
+- **Why:** each node runs its own autoscaler. The per-node values are in `results/autoscaler/metrics_per_node.csv`.
+
 ## Findings that differ from Dogani
 
 ### 4.1 The FIFA trace is not stationary
@@ -172,3 +225,18 @@ The code and results are in this repository:
 - **Dogani:** reports an MAE of 166.8 and an RMSE of 316.9 for FedAvg-BiGRU at t+3 (Table 8, p. 13).
 - **We found:** an MAE of 506.4 and an RMSE of 2064.9. Our traces average about 10,800 requests per minute, and the busiest minute has about 229,000. An MAE of 167 would be very small for traffic of this size. The paper does not say how its synthetic traces are scaled, so the traffic level behind its numbers is unknown. Only MAPE can be compared. Our MAPE is 12.8 to 14.4% for FedAvg-BiGRU, against Dogani's 9.0 to 11.2%.
 - **Note:** Table 8 gives FedAvg-BiGRU's MAE at t+5 as 221.9, but Table 4 gives 261.9 for the same model and data (p. 11 and 13).
+
+### 4.6 Table 11 does not follow its own formula
+
+- **Dogani:** prints εn = 1.30 for KHPA and 1.59 for FedAvg-BiGRU (Table 11, p. 17). It also gives TO = 235.34 for no autoscaling.
+- **We found:** Eq. 18 applied to Dogani's own Table 11 rows gives εn = 2.89 for KHPA and 6.55 for FedAvg-BiGRU. The order of the models stays the same, but every value is 2.2 to 4.4 times larger than printed. TO is a share of time, so it cannot be above 100 (Eq. 17, p. 11). We cannot tell how the printed εn values were computed.
+
+### 4.7 Most over-provisioning comes from Pods_min
+
+- **Dogani:** KHPA over-provisions much less than the planner: θO 3.05 against 13.04 for FedAvg-BiGRU (Table 11, p. 17).
+- **We found:** θO is about the same for all scalers: 40.6 for KHPA and 43.3 to 43.5 for the four predictors. A third of all minutes need fewer than 5 pods, and the median demand is 7.8 pods (mean over the nodes). Pods_min = 5 alone gives θO = 39.3. The Oracle over-provisions the most (θO 44.7, TO 80.8), even with perfect forecasts. Taking the maximum of the next 3 or 5 minutes and removing only 70% of the extra pods keep more pods than needed. That is the planner's design, not a forecast error. Our θO depends strongly on the traffic scale (entry 4A.2).
+
+### 4.8 The planner beats KHPA on under-provisioning
+
+- **Dogani:** the planner has the lowest θU and TU, and needs fewer scaling actions than KHPA (Table 11, p. 17).
+- **We found:** the same direction. With FedAvg-BiGRU, θU is 0.42 against 1.38 for KHPA, TU is 6.5% against 16.9%, and there are about half as many scaling actions (674 against 1,378 scale-ups per node). The four predictors are close to each other. CentralBiGRU is best (θU 0.39, εn 5.38), then FedAvg-BiGRU (0.42, 5.21). This is the same order as in Dogani's top two. With the Oracle, θU and TU are 0, so its εn is infinite. Without autoscaling, 15 fixed pods are too few in 28% of the minutes (θU 12.65 against Dogani's 2.01), because our demand has peaks of 188 to 873 pods.
