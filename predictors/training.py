@@ -1,6 +1,7 @@
 """Training and validation passes shared by the clients and the central models."""
 import time
 
+import numpy as np
 import torch
 from torch import nn
 
@@ -41,7 +42,9 @@ def predict(model, node, split="test", batch_size=4096):
         predicted.append(model(x).cpu())
         real.append(y.cpu())
     unscale = node.scaler.unscale_requests
-    return unscale(torch.cat(predicted).numpy()), unscale(torch.cat(real).numpy())
+    # Real requests are whole numbers. Rounding undoes the float32 scaling error,
+    # so a minute with 0 requests is exactly 0 again (MAPE has to skip those).
+    return unscale(torch.cat(predicted).numpy()), np.round(unscale(torch.cat(real).numpy()))
 
 
 def train_central(model, pooled, epochs, patience, batch_size, lr, seed, log=print):

@@ -4,7 +4,8 @@ Tests for predictors/ (FedAvg and central workload predictors). Run all tests wi
     .venv/bin/python -m unittest discover -s tests -v
 
 1. Features: day of week, hour, minute and holiday are right for known minutes.
-2. Windows never cross a split border, and each target is the next 5 minutes.
+2. Windows never cross a split border, each target is the next 5 minutes, and
+   real values come back as exact whole requests (zeros included, for MAPE).
 3. The min-max scaler is fitted on the training part only.
 4. The server averages weights by number of training windows.
 5. The Diebold-Mariano test: 0 for equal errors, clearly positive when a is worse.
@@ -20,7 +21,7 @@ import torch
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
-from predictors import data, evaluate, federated, models  # noqa: E402
+from predictors import data, evaluate, federated, models, training  # noqa: E402
 
 
 def write_trace(folder, n=1000):
@@ -65,6 +66,19 @@ class Windows(unittest.TestCase):
         real = lambda v: self.node.scaler.unscale_requests(v.numpy())    # minute i has i requests
         np.testing.assert_allclose(real(x[0, :, 0]), np.arange(100, 130), atol=1e-3)
         np.testing.assert_allclose(real(y[0]), np.arange(130, 135), atol=1e-3)
+
+    def test_real_values_come_back_exact(self):
+        # Requests i % 7 in a fresh trace: the test part has many minutes with 0 requests.
+        folder = tempfile.mkdtemp()
+        path = write_trace(folder)
+        rows = open(path).read().splitlines()
+        with open(path, "w") as f:
+            f.write("\n".join([rows[0]] + [f"{r.split(',')[0]},{i % 7}" for i, r in enumerate(rows[1:])]) + "\n")
+        node = data.NodeData(path, window=30, holiday_days=[], device="cpu")
+        _, real = training.predict(models.BiGRU(), node)
+        starts = node.starts["test"].numpy()
+        expected = (starts[:, None] + 30 + np.arange(data.HORIZON)) % 7
+        np.testing.assert_array_equal(real, expected)          # exact, zeros included
 
     def test_scaler_fitted_on_training_part(self):
         first, end = self.node.bounds["train"]
