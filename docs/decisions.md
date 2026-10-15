@@ -15,6 +15,7 @@ The code and results are in this repository:
 - Step 4A, autoscaler simulation: `autoscaler/`, `scripts/simulate_autoscaler.py`, results in `results/autoscaler/`
 - Step 4A sensitivity: `scripts/autoscaler_sensitivity.py`, results in `results/autoscaler_sensitivity/`
 - Step 4A fair runs (same Pods_min for KHPA and the planner): results in `results/autoscaler_fair/`
+- Step 4B, live demo with real containers: `autoscaler/cluster.py`, `autoscaler/loadgen.py`, `autoscaler/live.py`, `scripts/live_*.py`, results in `results/autoscaler_live/`, guide in `docs/demo_live.md`
 
 ## Step 1: the real FIFA workload
 
@@ -212,6 +213,97 @@ The code and results are in this repository:
 - **We:** the main "Dogani-like" run in `results/autoscaler/` uses mean pods 15, threshold 0.7, KHPA Pods_min 1 and planner Pods_min 5. Two fair runs in `results/autoscaler_fair/` use the same settings, but give KHPA and the planner the same Pods_min: both 1 (`pods_min_1/`) and both 5 (`pods_min_5/`).
 - **Why:** the main run is the combination closest to Dogani's Table 11 (finding 4.9). But it lets KHPA drop to 1 pod while the planner keeps 5, which favours KHPA at low load. The fair runs compare the two scalers under the same rule.
 
+## Step 4B: live demo with real containers
+
+### 4B.1 Docker on one laptop, not Kubernetes
+
+- **Dogani:** runs the scalers on a real container cluster with HAProxy in front (Section 7.5).
+- **We:** run real worker containers with Docker on one laptop. HAProxy sits in front. Our own Python loop plays Kubernetes: it starts and stops containers. We compare 3 scalers: no autoscaling, KHPA and the planner with FedAvg-BiGRU. Each one replays the same 3-hour window, one after another.
+- **Why:** this tests the step 4A logic against real CPU, real start-up times and real response times. A Kubernetes cluster would add a lot of setup and no new question.
+
+### 4B.2 Worker and tasks
+
+- **Dogani:** each request runs one of three tasks: sorting an array, the eigenvalues of a matrix, or compressing a file (Section 7.5).
+- **We:** each request picks one of three tasks with equal chance:
+  - sort 3000 random numbers;
+  - find the eigenvalues of a 100 x 100 random matrix;
+  - compress a 64 KB text file with zlib.
+
+  The worker is a small Python HTTP server with numpy, limited to 0.5 CPU and 256 MB. It uses one BLAS thread. Nagle's algorithm is off.
+- **Why:** with Nagle on, the server sends the headers and the body separately, and most requests waited about 40 ms for nothing. With it off, p95 dropped from 45 ms to about 5 ms.
+
+### 4B.3 Calibration: workload_pod
+
+- **Dogani:** uses 500 requests per minute per pod (Table 3, p. 10) and a 70% CPU threshold (p. 17).
+- **We:** measure how many requests one worker handles at 70% CPU. That number is 1,650 per step (165 per second, 9,902 per real minute) in `results/autoscaler_live/calibration.json`. We use it in place of 500 x 0.7. Requested workers from the traffic are ceil(requests / 1,650), and the planner uses the same number.
+- **How:** 18 workers get the same rate each. We read their CPU from the cgroup files. The 70% rate is read off the measured curve, between the two rates around it.
+- **Why 18 workers:** a request costs more CPU when the laptop is busier. This i7-13620H has 6 fast cores with 2 threads each and 4 slow cores. At 1,650 requests per step, one worker alone used 55% of its limit, 8 workers used 59% each and 18 workers used 72% each. We calibrated at 18 because the busiest minute is scaled to need 18 workers. Calibrated with 8 workers, the busiest minute would need about 22 workers by CPU, over the cap of 20.
+- **Pinning:** we also tried pinning the workers to the fast cores. The cost per request then grew 30% from 1 to 18 workers, against 12% without pinning. So we let Linux place them.
+
+### 4B.4 Window and scale
+
+- **Dogani:** Fig. 9 shows parts of the test period (p. 18).
+- **We:** use node 0's test traffic from 23 July 1998, 07:30 to 10:29, which is 180 minutes. It is centred on the busiest half hour of node 0's test period. The demand rises from about 4 workers to 18 and falls back to about 5. The traffic and the forecasts are multiplied by 0.1554, so that the busiest minute needs 18 workers. The mean demand is 8.11 workers. 3 warm-up minutes before the window are replayed but not measured.
+- **Why:** the task asks for a busy window with rises and drops, and at most about 18 workers at the peak.
+
+### 4B.5 Time compression
+
+- **Dogani:** one step is 1 minute. The cooldowns are 3 minutes up and 5 minutes down (Table 3, p. 10).
+- **We:** one step (one trace minute) takes 10 s of real time. The cooldowns stay 3 and 5 steps, which is 30 s and 50 s.
+- **Run time:** 180 steps x 10 s is 30 minutes. With warm-up and setup, each run takes about 31 minutes, not the 18 minutes the task estimated. We kept 10 s per minute, because the task states it twice.
+
+### 4B.6 Load generator
+
+- **Dogani:** does not describe the load generator.
+- **We:** use an open loop, so each request has a planned send time and goes out then, however slow the earlier ones are.
+  - Step k sends its requests evenly spread over its 10 s. Every scaler sees the same requests.
+  - A request fails when it gets no 200 answer within 2 s of its planned time.
+  - The response time is measured from the planned time. Waiting for a free connection counts.
+  - p95 is taken over the requests that succeeded. Failures are counted separately.
+  - The generator is plain asyncio with 6,000 keep-alive connections.
+- **Why so many connections:** an overloaded request holds its connection for up to about 1 s, and the peak is about 3,000 requests per second. Our first full run used 256 connections. Under overload the generator then became the bottleneck. It sent only a few hundred requests per second, the rest expired in its own queue, and the workers sat at 0.13 CPU while every request failed. That turned the test into a closed loop, so we threw the run away. With 6,000 connections, 8 workers at 2,700 requests per second run at 0.49 CPU and serve about 1,930 per second. The rest fail with a 503.
+- **Check:** the run JSON gives how late the generator queued requests. In every full run 99% were queued within 1.1 ms of their planned time (finding 4.13).
+
+### 4B.7 Load balancer and starting workers
+
+- **Dogani:** uses HAProxy.
+- **We:** use HAProxy 2.8 with round-robin. It lists all 20 possible workers from the start, in maintenance mode.
+  - **Scale-up:** the runner starts a pre-created container, waits for /health, then enables the worker through HAProxy's runtime API. Starting takes about 0.4 s.
+  - **Scale-down:** the runner first puts the worker in maintenance, waits 0.2 s and then stops the container.
+  - **Limits:** each worker takes at most 16 requests at once. The rest wait in HAProxy's queue for up to 1 s, then get a 503. HAProxy drops a queued request when its client gives up (`option abortonclose`).
+  - **Safety:** at most 20 workers. Every container has the label thesis.live=1. The runner removes them at the end, also after an error or Ctrl+C.
+- **Why:** pre-created containers make a scale-up as fast as a Kubernetes pod with a cached image. The runtime API changes the workers without restarting HAProxy.
+- **Why the 1 s queue and abortonclose:** with a 2 s queue and no abortonclose, an overload went bad. HAProxy kept the requests whose clients had given up and still sent them to the workers. The workers then spent their CPU on answers nobody waited for, and no request succeeded at all. With both settings, an overloaded worker serves its full capacity and the excess is rejected quickly. The calibration was done before this change. A check afterwards gave the same CPU use: 70.1% with 18 workers and 61.1% with 8 at 1,650 requests per step.
+
+### 4B.8 The three scalers
+
+- **No autoscaling:** 8 workers, the rounded mean demand of the window (8.11).
+- **KHPA:**
+  - Every step it asks Prometheus for the CPU of all workers: `sum(rate(container_cpu_usage_seconds_total[15s]))` from cAdvisor.
+  - It wants ceil(CPU / 0.35) workers, at least 1. That is Kubernetes' rule with CPU request = limit = 0.5 and a 70% target.
+  - Cooldowns are 3 and 5 steps, as in 4A.6. There is no 10% tolerance band.
+  - The 15 s window is used because Prometheus scrapes every 5 s, and rate() needs 2 samples. If Prometheus does not answer, KHPA uses the cgroup CPU. No full run needed that fallback.
+- **Planner:** Algorithm 3 exactly as in step 4A (`planner_step`), with line 6 read as in 4A.4. It runs on the scaled FedAvg-BiGRU forecasts with 1,650 requests per worker, at least 5.
+- **All three** start at 8 workers.
+- **Why:** these are the step 4A rules, with real CPU in place of traffic for KHPA, as the task asks.
+
+### 4B.9 Requested workers: from CPU and from traffic
+
+- **Dogani:** gets the optimal pods from the CPU usage and the 70% threshold (p. 17).
+- **We:** report Table 11 twice.
+  - **From real CPU:** requested = ceil(CPU of all workers in the step / 0.35), at least 1. This is what the task asks for.
+  - **From the traffic:** requested = ceil(requests / 1,650). It is the same in every run, as in step 4A.
+- **Why both:** the CPU measure has two weak spots.
+  - A saturated worker cannot use more than 0.5 CPU, so the CPU hides the demand that did not fit. This is the "hidden demand" finding of the first part of this thesis.
+  - A request costs less CPU when fewer workers run (entry 4B.3). So the CPU measure asks for fewer workers at low load.
+
+  The traffic measure has neither problem. It matches the step 4A simulation, which we also run on the same window.
+
+### 4B.10 Measuring CPU
+
+- **We:** the runner reads each worker's cgroup file (cpu.stat) at every step boundary. That gives the exact CPU time of each step. Prometheus is only used for KHPA's decision and for Grafana.
+- **Why:** Prometheus' rate() window and its 5 s scrapes make its value trail the real CPU by about half a step. The step CSVs keep both values: `cpu_total` from the cgroup and `prom_cpu` from Prometheus.
+
 ## Findings that differ from Dogani
 
 ### 4.1 The FIFA trace is not stationary
@@ -282,3 +374,34 @@ The code and results are in this repository:
   5. FedAvg-BiGRU stays at θO 9 to 44 and TU 6.5 to 16.4, against Dogani's 13.04 and 1.65. No setting matches both.
   6. In the closest combination KHPA has a higher εn than FedAvg-BiGRU (6.84 against 5.48), because KHPA may drop to 1 pod and the planner may not. The fair runs give both the same Pods_min (entry 4A.10, finding 4.8).
 - **Results:** `results/autoscaler_sensitivity/sensitivity.md`.
+
+### 4.10 Live, KHPA lands close to Dogani's KHPA
+
+- **Setup:** step 4B, 3 live runs of 30 minutes on node 0's busiest 3 hours (entries 4B.1 to 4B.10). Requested workers come from the real CPU.
+- **We found:**
+
+  | Scaler | θU | θO | TU | TO | εn |
+  |---|---|---|---|---|---|
+  | No autoscaling, 8 workers | 7.63 | 28.80 | 26.67 | 66.11 | 1.00 |
+  | KHPA | 4.79 / 6.23 | 3.26 / 3.05 | 31.11 / 32.05 | 17.78 / 18.23 | 2.59 / 1.30 |
+  | Planner, FedAvg-BiGRU | 0.27 / 0.26 | 24.62 / 13.04 | 2.78 / 1.65 | 87.78 / 75.12 | 3.93 / 1.59 |
+
+  Each cell is ours / Dogani. Live KHPA is within 1.5 points of Dogani's KHPA on all four metrics. The planner's θU of 0.27 matches his 0.26. Its over-provisioning is about twice his. The εn order matches Dogani: the planner beats KHPA. No autoscaling cannot be compared, because Dogani's fixed pods sit far above the mean demand (θO 152.07), and ours sit at it.
+- **Caution:** this is one 3-hour window on one node, not 16 nodes over 17 days.
+
+### 4.11 Which "requested workers" to use changes the winner
+
+- **We found:** with requested workers from the traffic, KHPA looks under-provisioned in 76% of the steps (TU 76.11). Its εn of 3.19 then beats the planner's 2.34. Yet KHPA lost no request, and its p95 stayed at 4.6 ms.
+- **Why:** the traffic measure uses the calibration at 18 busy workers. With fewer workers a request costs less CPU (entry 4B.3), so fewer workers are enough. KHPA follows the CPU and uses this. The CPU measure has the opposite weak spot. When no autoscaling saturated its 8 workers at the peak, the CPU asked for at most 12 workers, while the traffic needed up to 18.
+- **Consequence:** without saturation the CPU measure is the honest one, and with saturation the traffic measure is. Table 11 depends on that choice. Dogani derives the optimal pods from CPU (p. 17), so our main live table uses CPU.
+
+### 4.12 Users see no difference between KHPA and the planner here
+
+- **We found:** without autoscaling, 124,471 requests failed (5.17%), all of them HAProxy 503s during the peak, and p95 was 1,093 ms. With KHPA and with the planner, no request failed and p95 was 4.6 ms. KHPA had one step with a p95 of 20 ms, at a fast rise.
+- **Consequence:** on this window the planner's lower θU shows in the metrics, but not in the response times. A scale-up takes about 0.4 s, and a 30% CPU margin absorbs the one-minute lag of KHPA. The planner pays with 22% more workers on average: 9.25 against 7.56.
+
+### 4.13 Live against simulated
+
+- **We found:** the live planner chose the same worker count as the step 4A simulation in all 180 steps. That is expected, because it only reads the forecasts. KHPA differed in 142 of 180 steps, because live KHPA reads CPU and the simulated one reads traffic. Its metrics are still close: simulated θU 4.65 and θO 3.51 (traffic measure), live 4.79 and 3.26 (CPU measure).
+- **Load generator:** in every full run 99% of the requests were queued within 1.1 ms of their planned time. There were no client timeouts and no broken connections. The highest load average was 8.8 on 16 threads.
+- **Results:** `results/autoscaler_live/report.md`, plots `plot_none.png`, `plot_khpa.png`, `plot_planner.png`.

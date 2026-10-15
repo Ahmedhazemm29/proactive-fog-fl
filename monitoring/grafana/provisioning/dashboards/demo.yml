@@ -1,5 +1,5 @@
 # Load the dashboards in /etc/grafana/dashboards when Grafana starts, and
-# re-read them every 10 s. docker-compose.yml mounts only demo.json there.
+# re-read them every 10 s. docker-compose.yml mounts demo.json and autoscaler-live.json there.
 apiVersion: 1
 providers:
   - name: demo

@@ -1,0 +1,552 @@
+{
+ "uid": "autoscaler-live",
+ "title": "Live autoscaler demo (step 4B)",
+ "description": "scripts/live_run.py: worker containers behind HAProxy, replaying FIFA traffic. 1 step = 1 trace minute = 10 s.",
+ "tags": [
+  "demo",
+  "autoscaler"
+ ],
+ "editable": true,
+ "graphTooltip": 1,
+ "time": {
+  "from": "now-10m",
+  "to": "now"
+ },
+ "refresh": "5s",
+ "timepicker": {
+  "refresh_intervals": [
+   "5s",
+   "10s",
+   "30s",
+   "1m"
+  ]
+ },
+ "schemaVersion": 39,
+ "panels": [
+  {
+   "id": 1,
+   "type": "timeseries",
+   "title": "Workers: running and requested",
+   "description": "Running: workers HAProxy sends requests to (needs the live-haproxy scrape job), and live-worker containers that use CPU (cAdvisor). Requested: ceil(CPU of all workers / 0.35), so every worker at 70% of its 0.5 CPU.",
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 18,
+    "h": 10
+   },
+   "interval": "5s",
+   "targets": [
+    {
+     "refId": "A",
+     "legendFormat": "running (HAProxy)",
+     "expr": "haproxy_backend_active_servers{proxy=\"workers\"}"
+    },
+    {
+     "refId": "B",
+     "legendFormat": "running (containers)",
+     "expr": "count(rate(container_cpu_usage_seconds_total{name=~\"live-worker-.*\"}[15s]))"
+    },
+    {
+     "refId": "C",
+     "legendFormat": "requested (CPU / 0.35)",
+     "expr": "ceil(sum(rate(container_cpu_usage_seconds_total{name=~\"live-worker-.*\"}[15s])) / 0.35)"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "spanNulls": true,
+      "axisSoftMin": 0
+     },
+     "max": 21
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "running (HAProxy)"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#d95926"
+        }
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 4
+       },
+       {
+        "id": "custom.lineInterpolation",
+        "value": "stepAfter"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "running (containers)"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#f2a27f"
+        }
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 1
+       },
+       {
+        "id": "custom.lineInterpolation",
+        "value": "stepAfter"
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dot",
+         "dash": [
+          2,
+          4
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "requested (CPU / 0.35)"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#1f2937"
+        }
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          10,
+          6
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "showLegend": true,
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   }
+  },
+  {
+   "id": 2,
+   "type": "stat",
+   "title": "Running workers",
+   "description": "live-worker containers that use CPU (cAdvisor).",
+   "gridPos": {
+    "x": 18,
+    "y": 0,
+    "w": 6,
+    "h": 5
+   },
+   "interval": "5s",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "count(rate(container_cpu_usage_seconds_total{name=~\"live-worker-.*\"}[15s]))",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "decimals": 0,
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "#d95926"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "#d95926",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   }
+  },
+  {
+   "id": 3,
+   "type": "stat",
+   "title": "Requested workers",
+   "description": "ceil(CPU of all workers / 0.35).",
+   "gridPos": {
+    "x": 18,
+    "y": 5,
+    "w": 6,
+    "h": 5
+   },
+   "interval": "5s",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "ceil(sum(rate(container_cpu_usage_seconds_total{name=~\"live-worker-.*\"}[15s])) / 0.35)",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "decimals": 0,
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "#1f2937"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "#1f2937",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   }
+  },
+  {
+   "id": 4,
+   "type": "timeseries",
+   "title": "CPU per worker",
+   "description": "CPU cores each worker uses (cAdvisor). Dashed lines: the 70% target (0.35) and the limit (0.5).",
+   "gridPos": {
+    "x": 0,
+    "y": 10,
+    "w": 12,
+    "h": 9
+   },
+   "interval": "5s",
+   "targets": [
+    {
+     "refId": "A",
+     "legendFormat": "{{name}}",
+     "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=~\"live-worker-.*\"}[15s]))"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "spanNulls": true,
+      "axisSoftMin": 0,
+      "thresholdsStyle": {
+       "mode": "dashed"
+      }
+     },
+     "max": 0.6,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "transparent",
+        "value": null
+       },
+       {
+        "color": "#1f2937",
+        "value": 0.35
+       },
+       {
+        "color": "#b91c1c",
+        "value": 0.5
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "showLegend": true,
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   }
+  },
+  {
+   "id": 5,
+   "type": "timeseries",
+   "title": "Requests per second",
+   "description": "Requests HAProxy receives, and its 5xx answers (no free worker within 2 s). Needs the live-haproxy scrape job. The load generator also counts answers that come too late; those are in its CSV, not here.",
+   "gridPos": {
+    "x": 12,
+    "y": 10,
+    "w": 12,
+    "h": 9
+   },
+   "interval": "5s",
+   "targets": [
+    {
+     "refId": "A",
+     "legendFormat": "received",
+     "expr": "sum(rate(haproxy_frontend_http_requests_total{proxy=\"web\"}[15s]))"
+    },
+    {
+     "refId": "B",
+     "legendFormat": "failed (5xx)",
+     "expr": "sum(rate(haproxy_frontend_http_responses_total{proxy=\"web\",code=\"5xx\"}[15s]))"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "spanNulls": true,
+      "axisSoftMin": 0
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "received"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3987e5"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "failed (5xx)"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#b91c1c"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "showLegend": true,
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   }
+  },
+  {
+   "id": 6,
+   "type": "timeseries",
+   "title": "Response time",
+   "description": "HAProxy's average over the last 1024 requests: time a worker took to answer, and time waiting in HAProxy's queue for a free worker. Their sum is close to the response time. (HAProxy's 'total time' also counts the idle keep-alive time between requests, so it is not used.) The p95 per step is in the runner's CSV.",
+   "gridPos": {
+    "x": 0,
+    "y": 19,
+    "w": 12,
+    "h": 8
+   },
+   "interval": "5s",
+   "targets": [
+    {
+     "refId": "A",
+     "legendFormat": "worker answer",
+     "expr": "haproxy_backend_response_time_average_seconds{proxy=\"workers\"}"
+    },
+    {
+     "refId": "B",
+     "legendFormat": "waiting in queue",
+     "expr": "haproxy_backend_queue_time_average_seconds{proxy=\"workers\"}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "spanNulls": true,
+      "axisSoftMin": 0
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "worker answer"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3987e5"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "waiting in queue"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#b91c1c"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "showLegend": true,
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   }
+  },
+  {
+   "id": 7,
+   "type": "timeseries",
+   "title": "Requests waiting in HAProxy",
+   "description": "Requests in HAProxy's queue because every worker already has 16 in progress. Above 0 means too few workers.",
+   "gridPos": {
+    "x": 12,
+    "y": 19,
+    "w": 12,
+    "h": 8
+   },
+   "interval": "5s",
+   "targets": [
+    {
+     "refId": "A",
+     "legendFormat": "queued",
+     "expr": "haproxy_backend_current_queue{proxy=\"workers\"}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "spanNulls": true,
+      "axisSoftMin": 0
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "queued"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#b91c1c"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "showLegend": true,
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   }
+  }
+ ]
+}

@@ -78,13 +78,15 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      # The demo dashboard, loaded by provisioning/dashboards/demo.yml. Only this
-      # file: proactive-autoscaling.json is an export of a dashboard that lives
+      # The demo dashboards, loaded by provisioning/dashboards/demo.yml. Only these
+      # files: proactive-autoscaling.json is an export of a dashboard that lives
       # in grafana-data with the same uid, and loading it would overwrite and
       # lock that one.
       # Tools that replace the file (git checkout, sed -i) are only seen after
       # `docker restart grafana`; editing it in place is picked up within 10 s.
       - ./monitoring/grafana/dashboards/demo.json:/etc/grafana/dashboards/demo.json:ro
+      # The live autoscaler demo of step 4B (docs/demo_live.md)
+      - ./monitoring/grafana/dashboards/autoscaler-live.json:/etc/grafana/dashboards/autoscaler-live.json:ro
       - grafana-data:/var/lib/grafana
     ports:
       - "3000:3000"
