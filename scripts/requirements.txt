@@ -1,5 +1,7 @@
-# For fifa_workload.py, plot_fifa_workload.py and synthetic_traces.py:
+# For fifa_workload.py, plot_fifa_workload.py, synthetic_traces.py and train_predictors.py:
 #   .venv/bin/pip install -r scripts/requirements.txt
 numpy
 scipy
 matplotlib
+torch       # the predictors; the default Linux wheel includes CUDA
+holidays    # French public holidays for the predictors' features
