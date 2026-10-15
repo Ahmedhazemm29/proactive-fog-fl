@@ -1,5 +1,5 @@
-model,parameters,model_bytes,rounds_or_epochs,best_round_or_epoch,bytes_per_round,bytes_total,train_seconds
-FedAvg-BiGRU,27589,110356,14,9,3531392,49439488,359.8
-FedAvg-LSTM,18501,74004,14,9,2368128,33153792,282.1
-CentralBiGRU,27589,110356,14,9,,32071680,319.7
-CentralLSTM,18501,74004,16,11,,32071680,312.1
+model,parameters,model_bytes,rounds_or_epochs,best_round_or_epoch,bytes_per_round,bytes_total,break_even_rounds,train_seconds
+FedAvg-BiGRU,27589,110356,19,9,3531392,67096448,9.081880459603465,432.5
+FedAvg-LSTM,18501,74004,39,29,2368128,92356992,13.54305172693368,758.8
+CentralBiGRU,27589,110356,19,9,,32071680,,442.6
+CentralLSTM,18501,74004,21,11,,32071680,,404.6

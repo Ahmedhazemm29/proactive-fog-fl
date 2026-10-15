@@ -20,7 +20,8 @@ CentralLSTM, trained on all nodes' training windows pooled.
    model; size and communication cost of each model.
 
 Outputs in --out-dir (default results/predictors/): table8.md, metrics.csv,
-metrics_per_node.csv, dm.csv, cost.csv, report.json, prediction_node_XX.png.
+metrics_per_node.csv, dm.csv, cost.csv, validation_loss.csv, report.json,
+prediction_node_XX.png, validation_loss.png.
 Model weights go to --weights-dir (default data/predictors/, not in git).
 """
 import argparse
@@ -153,15 +154,50 @@ def table8_markdown(pooled, dm, cost, args, chosen_window, n_nodes):
         lines.append(f"| {pair} | " + " | ".join(cells) + " |")
     lines += ["", "DM > 0: FedAvg-BiGRU has the larger errors. p < 0.05: the accuracy differs.", "",
               "## Size and communication", "",
-              "| Model | Parameters | Model bytes | Rounds or epochs | Bytes per round | Bytes in total | Training time (s) |",
-              "|---|---|---|---|---|---|---|"]
+              "| Model | Parameters | Model bytes | Rounds or epochs (best) | Bytes per round | Bytes in total "
+              "| Break-even rounds | Training time (s) |",
+              "|---|---|---|---|---|---|---|---|"]
     for row in cost:
+        per_round = format(row["bytes_per_round"], ",") if row["bytes_per_round"] else "–"
+        even = f"{row['break_even_rounds']:.1f}" if row["break_even_rounds"] else "–"
         lines.append(f"| {row['model']} | {row['parameters']:,} | {row['model_bytes']:,} | "
-                     f"{row['rounds_or_epochs']} | {format(row['bytes_per_round'], ',') if row['bytes_per_round'] else '–'} | "
-                     f"{row['bytes_total']:,} | {row['train_seconds']} |")
+                     f"{row['rounds_or_epochs']} ({row['best_round_or_epoch']}) | {per_round} | "
+                     f"{row['bytes_total']:,} | {even} | {row['train_seconds']} |")
     lines += ["", "Federated: bytes = model weights down and up for every chosen client. Central: "
-              "bytes = every node's training and validation minutes (5 float32 features) sent once.", ""]
+              "bytes = every node's training and validation minutes (5 float32 features) sent once. "
+              "Break-even rounds: after this many rounds FedAvg has sent as many bytes as the raw data.", "",
+              "Validation loss per round or epoch: validation_loss.csv and validation_loss.png.", ""]
     return "\n".join(lines)
+
+
+STYLE = {"FedAvg-BiGRU": ("#3987e5", "-"), "CentralBiGRU": ("#3987e5", "--"),
+         "FedAvg-LSTM": ("#d95926", "-"), "CentralLSTM": ("#d95926", "--")}
+
+
+def plot_validation(path, histories, patience):
+    """Validation MAE (scaled) per FedAvg round or central epoch, the best one marked."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(10, 4.5))
+    for name, history in histories.items():
+        color, line = STYLE[name]
+        x = [h.get("round", h.get("epoch")) for h in history]
+        y = [h["val_loss"] for h in history]
+        best = int(np.argmin(y))
+        ax.plot(x, y, color=color, ls=line, lw=1.4, label=f"{name} (best {x[best]})")
+        ax.plot(x[best], y[best], "o", color=color, ms=7, mec="white", mew=1.5)
+    ax.set_title(f"Validation MAE (scaled) per FedAvg round or central epoch, patience {patience}", loc="left")
+    ax.set_xlabel("round (FedAvg) or epoch (central)")
+    ax.set_ylabel("validation MAE (scaled)")
+    ax.grid(color="#e5e7eb", lw=0.8)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.legend(frameon=False)
+    fig.tight_layout()
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
 
 
 def plot_node(path, node, predictions, node_index, hours):
@@ -179,12 +215,10 @@ def plot_node(path, node, predictions, node_index, hours):
     part = slice(max(0, centre - half), min(len(real), centre + half))
     t = minutes[part].astype("datetime64[s]").astype(object)
 
-    style = {"FedAvg-BiGRU": ("#3987e5", "-"), "CentralBiGRU": ("#3987e5", "--"),
-             "FedAvg-LSTM": ("#d95926", "-"), "CentralLSTM": ("#d95926", "--")}
     fig, ax = plt.subplots(figsize=(13, 4.5))
     ax.plot(t, real[part], color="#1f2937", lw=1.6, label="real")
     for name, per in predictions.items():
-        color, line = style[name]
+        color, line = STYLE[name]
         ax.plot(t, per[node_index][0][part, step - 1], color=color, ls=line, lw=1.1, label=name)
     ax.set_title(f"{node.name}: real requests and t+{step} predictions (test part, Paris time)", loc="left")
     ax.set_ylabel("requests per minute")
@@ -268,6 +302,8 @@ def main():
                           "best_round_or_epoch": c["best_round"] if federated else c["best_epoch"],
                           "bytes_per_round": c["bytes_per_round"] if federated else None,
                           "bytes_total": c["bytes_total"] if federated else central_bytes,
+                          # rounds after which FedAvg has sent as many bytes as the raw data once
+                          "break_even_rounds": central_bytes / c["bytes_per_round"] if federated else None,
                           "train_seconds": c["train_seconds"]})
         torch.save(model.state_dict(), os.path.join(args.weights_dir, f"{name}_W{chosen}.pt"))
 
@@ -275,6 +311,12 @@ def main():
     write_csv(os.path.join(args.out_dir, "metrics_per_node.csv"), per_node)
     write_csv(os.path.join(args.out_dir, "dm.csv"), dm)
     write_csv(os.path.join(args.out_dir, "cost.csv"), cost_rows)
+    write_csv(os.path.join(args.out_dir, "validation_loss.csv"),
+              [{"model": name, "round_or_epoch": h.get("round", h.get("epoch")), "train_loss": h["train_loss"],
+                "val_loss": h["val_loss"], "seconds": h["seconds"]}
+               for name in MODELS for h in trained[name][1]])
+    plot_validation(os.path.join(args.out_dir, "validation_loss.png"),
+                    {name: trained[name][1] for name in MODELS}, args.patience)
     with open(os.path.join(args.out_dir, "table8.md"), "w") as f:
         f.write(table8_markdown(pooled, dm, cost_rows, args, chosen, len(nodes)))
     plot_node(os.path.join(args.out_dir, f"prediction_node_{args.plot_node:02d}.png"),

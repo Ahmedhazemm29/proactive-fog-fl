@@ -1,0 +1,5 @@
+model,parameters,model_bytes,rounds_or_epochs,best_round_or_epoch,bytes_per_round,bytes_total,train_seconds
+FedAvg-BiGRU,27589,110356,14,9,3531392,49439488,359.8
+FedAvg-LSTM,18501,74004,14,9,2368128,33153792,282.1
+CentralBiGRU,27589,110356,14,9,,32071680,319.7
+CentralLSTM,18501,74004,16,11,,32071680,312.1
