@@ -10,7 +10,9 @@ Usage:
    minutes t .. t+4 for every minute t of each node's test period. A 5th
    predictor, Oracle, uses the real future traffic (best case).
 2. SCALE: per node, real traffic and predictions are multiplied by one
-   factor, so that the node's mean demand is --mean-pods pods.
+   factor, so that the node's mean traffic is --mean-pods x 500 requests per
+   minute (--mean-pods pods at 100% use). --threshold 0.7 then asks for
+   ceil(load / 350) pods, as Dogani does for the optimal pods (p. 17).
 3. SIMULATE: no autoscaling (fixed pods), KHPA (reactive), and the proactive
    planner with each predictor (autoscaler/scalers.py).
 4. MEASURE: θU, θO, TU, TO, elastic speedup and scaling counts per node
@@ -27,6 +29,7 @@ import math
 import os
 import sys
 import time
+from dataclasses import replace
 
 import numpy as np
 import torch
@@ -93,18 +96,22 @@ def node_inputs(node, requests, models):
 # ----------------------------------------------------------------------
 # Simulation of one node
 # ----------------------------------------------------------------------
-def simulate_node(requests, minutes, forecasts, s, mean_pods):
+def simulate_node(requests, minutes, forecasts, s, mean_pods, khpa_pods_min=None, predictors=PREDICTORS):
     """
-    All scalers on one node. Traffic and forecasts are multiplied by `factor`
-    so that the mean demand over the simulated minutes is mean_pods pods.
+    The scalers on one node. Traffic and forecasts are multiplied by `factor`
+    so that the mean traffic is mean_pods x workload_pod (500) requests per
+    minute. The factor does not depend on the threshold: with threshold 0.7
+    the same traffic needs 1/0.7 times more pods.
+    khpa_pods_min: KHPA's own Pods_min (default: the planner's).
     Returns (factor, requested pods, {scaler: (pods, ups, downs)}).
     """
     factor = mean_pods * s.workload_pod / requests[minutes].mean()
     real = requests * factor
-    requested = requested_pods(real[minutes], s.workload_pod)
+    requested = requested_pods(real[minutes], s.capacity)
+    khpa_s = s if khpa_pods_min is None else replace(s, pods_min=khpa_pods_min)
     runs = {"No autoscaling": no_autoscaling(len(minutes), s),
-            "KHPA": khpa(real[minutes - 1], s, start_pods=s.fixed_pods)}
-    for name in PREDICTORS:
+            "KHPA": khpa(real[minutes - 1], khpa_s, start_pods=s.fixed_pods)}
+    for name in predictors:
         runs[name] = planner(forecasts[name] * factor, s, start_pods=s.fixed_pods)
     return factor, requested, runs
 
@@ -190,9 +197,10 @@ def table11_markdown(summary, factors, s, args, n_minutes):
         "# Autoscaler simulation (Dogani & Khunjush 2024, Table 11)",
         "",
         f"Mean over {n} nodes, {n_minutes:,} test minutes each (one step = 1 minute).",
-        f"Traffic per node scaled so that the mean demand is {args.mean_pods:g} pods "
+        f"Traffic per node scaled so that the mean demand is {args.mean_pods:g} pods at 100% use "
         f"(factors {min(factors):.4f} to {max(factors):.4f}).",
-        f"Settings (Table 3): workload_pod {s.workload_pod:g}, Pods_min {s.pods_min}, "
+        f"Settings (Table 3): workload_pod {s.workload_pod:g}, threshold {s.threshold:g}, "
+        f"Pods_min {s.pods_min} (KHPA {args.khpa_pods_min or s.pods_min}), "
         f"CDT scale-up {s.cdt_up} min, scale-down {s.cdt_down} min, SDR {s.sdr:g}. "
         f"No autoscaling: {s.fixed_pods} pods.",
         "",
@@ -302,9 +310,12 @@ def main():
     parser.add_argument("--weights-dir", default=os.path.join(ROOT, "data", "predictors"))
     parser.add_argument("--predictors-report", default=os.path.join(ROOT, "results", "predictors", "report.json"),
                         help="report.json of the training run (window, units, dropout)")
-    parser.add_argument("--mean-pods", type=float, default=15, help="mean demand per node after scaling (default 15)")
+    parser.add_argument("--mean-pods", type=float, default=15, help="mean traffic per node after scaling, in pods at 100%% use (default 15)")
     parser.add_argument("--workload-pod", type=float, default=500, help="requests per minute per pod (default 500)")
+    parser.add_argument("--threshold", type=float, default=0.7,
+                        help="target use of a pod: pods = ceil(load / (workload_pod x threshold)) (default 0.7)")
     parser.add_argument("--pods-min", type=int, default=5)
+    parser.add_argument("--khpa-pods-min", type=int, default=None, help="KHPA's Pods_min (default: --pods-min)")
     parser.add_argument("--cdt-up", type=int, default=3, help="cooldown after a scale-up, minutes (default 3)")
     parser.add_argument("--cdt-down", type=int, default=5, help="cooldown after a scale-down, minutes (default 5)")
     parser.add_argument("--sdr", type=float, default=0.3, help="scale-down rate (default 0.3)")
@@ -318,7 +329,8 @@ def main():
     os.makedirs(args.out_dir, exist_ok=True)
     os.makedirs(args.pods_dir, exist_ok=True)
 
-    s = Settings(args.workload_pod, args.pods_min, args.cdt_up, args.cdt_down, args.sdr, args.fixed_pods)
+    s = Settings(args.workload_pod, args.pods_min, args.cdt_up, args.cdt_down, args.sdr, args.fixed_pods,
+                 args.threshold)
     trained = json.load(open(args.predictors_report))
     window = trained["chosen_window"]
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -333,7 +345,7 @@ def main():
         node = NodeData(path, window, holiday_days, device)
         requests = load_node(path)[1]
         minutes, forecasts = node_inputs(node, requests, models)
-        factor, requested, runs = simulate_node(requests, minutes, forecasts, s, args.mean_pods)
+        factor, requested, runs = simulate_node(requests, minutes, forecasts, s, args.mean_pods, args.khpa_pods_min)
         result = node_metrics(requested, runs)
         per_node.append(result)
         factors.append(factor)

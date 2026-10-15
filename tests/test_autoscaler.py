@@ -6,7 +6,8 @@ Tests for autoscaler/ (the simulated scalers of step 4A). Run all tests with:
 1. Planner (Algorithm 3): cooldowns after a scale-up and a scale-down,
    scale-up with the max of 3 forecasts, the SDR rule, Pods_min, and no
    scale-up from the scale-down branch.
-2. KHPA: pods for the last observed minute, at least Pods_min.
+2. KHPA: pods for the last observed minute, at least Pods_min. The 70%
+   threshold gives 350 requests per pod everywhere.
 3. Metrics (Eqs. 14 to 18) on a tiny hand-made example, and εn when a
    metric is 0.
 """
@@ -82,6 +83,15 @@ class Khpa(unittest.TestCase):
 
     def test_requested_pods(self):
         np.testing.assert_array_equal(scalers.requested_pods([0, 1, 500, 501], 500), [1, 1, 1, 2])
+
+    def test_threshold(self):
+        # 70% threshold: a pod gets 500 x 0.7 = 350 requests per minute, for every scaler
+        s = scalers.Settings(threshold=0.7)
+        self.assertEqual(s.capacity, 350)
+        np.testing.assert_array_equal(scalers.requested_pods([350, 351, 700, 701], s.capacity), [1, 2, 2, 3])
+        pods, _, _ = scalers.khpa(np.array([3501.0]), s, start_pods=5)
+        self.assertEqual(list(pods), [11])
+        self.assertEqual(scalers.planner_step(np.full(5, 3501.0), 5, s), 11)
 
 
 class Metrics(unittest.TestCase):

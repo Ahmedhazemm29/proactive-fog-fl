@@ -13,6 +13,7 @@ The code and results are in this repository:
 - Step 2, synthetic node traces: `scripts/synthetic_traces.py`
 - Step 3, predictors: `predictors/`, `scripts/train_predictors.py`, results in `results/predictors/`
 - Step 4A, autoscaler simulation: `autoscaler/`, `scripts/simulate_autoscaler.py`, results in `results/autoscaler/`
+- Step 4A sensitivity: `scripts/autoscaler_sensitivity.py`, results in `results/autoscaler_sensitivity/`
 
 ## Step 1: the real FIFA workload
 
@@ -164,6 +165,7 @@ The code and results are in this repository:
 - **Dogani:** requested pods are the CPU usage divided by a threshold of 70% (p. 17). Eqs. 14 to 17 weight each step by Δt, the time between changes (p. 10).
 - **We:** requested pods at minute t = ceil(traffic / 500), at least 1. One step is Δt = 1 minute.
 - **Why:** we have traffic, not CPU usage. 500 requests per pod is workload_pod from Table 3. Summing every minute with Δt = 1 gives the same result as weighting each interval between changes by its length.
+- **Later:** we added Dogani's 70% threshold as an option. See entry 4A.9.
 
 ### 4A.4 Line 6 of Algorithm 3
 
@@ -196,6 +198,12 @@ The code and results are in this repository:
 - **Dogani:** does not say how the 16 nodes are combined in Table 11, or what the scaling counts cover.
 - **We:** compute all metrics per node and report the mean over the 16 nodes. The counts are per node over its test period. εn is computed per node against that node's no-autoscaling run, then averaged. When εn divides by 0, we report it as infinite and name the metric that is 0.
 - **Why:** each node runs its own autoscaler. The per-node values are in `results/autoscaler/metrics_per_node.csv`.
+
+### 4A.9 The 70% threshold
+
+- **Dogani:** gets the optimal pods by dividing the CPU usage by a threshold. The threshold is 70% (Section 7.5, p. 17).
+- **We:** added `--threshold` (default 0.7). Requested pods = ceil(traffic / (500 x 0.7)), so a pod gets 350 requests per minute. KHPA and the planner use the same 350. The traffic scale does not change with the threshold: mean pods 15 still means 15 x 500 requests per minute. So with 0.7 the same traffic needs about 1/0.7 times more pods. No autoscaling stays at 15 pods.
+- **Why:** this is Dogani's text, and it is one candidate cause of the gap to Table 11 (finding 4.9). `results/autoscaler/` was made before this option, with threshold 1.0. It can be reproduced with `--threshold 1.0`, which gives exactly the same numbers.
 
 ## Findings that differ from Dogani
 
@@ -240,3 +248,16 @@ The code and results are in this repository:
 
 - **Dogani:** the planner has the lowest θU and TU, and needs fewer scaling actions than KHPA (Table 11, p. 17).
 - **We found:** the same direction. With FedAvg-BiGRU, θU is 0.42 against 1.38 for KHPA, TU is 6.5% against 16.9%, and there are about half as many scaling actions (674 against 1,378 scale-ups per node). The four predictors are close to each other. CentralBiGRU is best (θU 0.39, εn 5.38), then FedAvg-BiGRU (0.42, 5.21). This is the same order as in Dogani's top two. With the Oracle, θU and TU are 0, so its εn is infinite. Without autoscaling, 15 fixed pods are too few in 28% of the minutes (θU 12.65 against Dogani's 2.01), because our demand has peaks of 188 to 873 pods.
+
+### 4.9 Which assumptions explain the gap to Table 11
+
+- **Question:** our Table 11 is far from Dogani's. Which of our assumptions causes it?
+- **We tested:** 12 combinations of mean traffic (15, 25 and 40 pods at 100% use), threshold (1.0 and 0.7) and KHPA's Pods_min (5 and 1). The planner keeps Pods_min 5, and no autoscaling keeps 15 pods. We measured the distance to Dogani as the sum of absolute differences on θU, θO, TU and TO, for no autoscaling, KHPA and FedAvg-BiGRU. His TO of 235.34 for no autoscaling is left out.
+- **We found:**
+  1. The closest combination is mean 15, threshold 0.7 and KHPA Pods_min 1, with a distance of 92.3. Our default run (mean 15, threshold 1.0, Pods_min 5) has a distance of 226.6.
+  2. KHPA's Pods_min matters most for KHPA. With Pods_min 1, KHPA's θO drops from 40.6 to 2.2, close to Dogani's 3.05. So Dogani's KHPA probably did not keep 5 pods at low load.
+  3. With threshold 0.7 and mean 15, no autoscaling gets θO 149.3, close to Dogani's 152.07.
+  4. No combination brings the under-provisioning of no autoscaling close to Dogani. Our θU stays at 12.65 or more against his 2.01, and our TU at 28.4 or more against his 10.76. Our traffic has higher peaks relative to its mean, so 15 fixed pods are too few more often.
+  5. FedAvg-BiGRU stays at θO 9 to 44 and TU 6.5 to 16.4, against Dogani's 13.04 and 1.65. No setting matches both.
+  6. In the closest combination KHPA has a higher εn than FedAvg-BiGRU (6.84 against 5.48), because KHPA may drop to 1 pod and the planner may not. A fair test would give both the same Pods_min.
+- **Results:** `results/autoscaler_sensitivity/sensitivity.md`.
