@@ -5,3 +5,12 @@ Literature Review
 
 % PREVIEW
 Dogani and Khunjush~\cite{dogani2024} propose FedAvg-BiGRU, a proactive autoscaler for Kubernetes at the edge. Federated learning trains a BiGRU workload predictor across edge nodes, so only model updates travel to the cloud instead of raw workload data. The planner then converts multi-step predictions into a number of pods, using the Cool Down Time (CDT) to avoid contradictory scaling actions. In simulation on FIFA World Cup request traces, the approach reduces under-provisioning compared with the reactive Kubernetes autoscaler, at the cost of more over-provisioning. However, the authors scale pods for containerized web applications and use federated learning only to train the predictor. They do not dynamically allocate CPU for containers running federated learning.
+
+
+\section{Resource Allocation and Autoscaling for FL}
+
+% PREVIEW
+Nikolaidis et al.~\cite{nikolaidis2023} study how CPU limits affect federated learning containers running Flower on a Kubernetes cluster of four physical nodes. They show that default orchestrator settings are not suited to FL workloads: in their experiments, a client used about nine of sixteen reserved CPUs, and halving the reservation to eight CPUs increased training time by about 22\%. They also observe that FL workloads follow predictable performance patterns. However, the CPU limits are fixed before training starts, and a runtime module that adjusts them is left as future work.
+
+% PREVIEW
+Subramanya and Riggio~\cite{subramanya2021} train FFNN, LSTM and CNN-LSTM forecasting models, both centralized and federated, on 43 days of hourly traffic from three base stations, and use the predictions to scale an nginx web server on a Kubernetes prototype, horizontally in whole instances and vertically in steps of 100 millicores. Predictive scaling reacts faster than the Kubernetes reactive baseline, whose waits of three to five minutes delay its response to traffic spikes. The federated predictors are less accurate than the centralized ones; for the LSTM, the mean absolute error is 1.49 against 0.55, which the authors attribute to non-IID data. Critically for this thesis, the scaled application is a web server rather than an FL job, and vertical changes are applied through a new deployment that restarts the pod and raises response time at load peaks.
