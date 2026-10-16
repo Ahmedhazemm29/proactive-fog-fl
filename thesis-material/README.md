@@ -21,6 +21,6 @@ Raw material for four chapters: (1) Data, (2) Prediction, (3) Autoscaling, (4) R
 
 ## Things to verify before quoting
 
-- decisions.md 2.2 gives the real maximum as 154 thousand requests per minute; 4.5 gives ~229,000 for the busiest minute. Different scope is likely; unverified.
+- Resolved: the real full-trace maximum is 229,426 req/min; 154k (153,878) was the maximum of the one-week test window, and decisions.md 2.2 now says so. The 7.8 million Fisk figure is still unverified in saved files.
 - decisions.md 4A.2 says scale factors 0.42 to 2.44; table11.md says 0.4157 to 2.4404 (same, rounded).
 - `facts/03_autoscaling.md` section 3.4 uses numbers from the project CLAUDE.md (untracked), not from a committed file.

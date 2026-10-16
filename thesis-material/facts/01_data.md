@@ -11,8 +11,10 @@ Source tags: `D x.y` = docs/decisions.md entry x.y (all paths relative to repo r
 - Dogani uses 88 days, 30 April to 26 July 1998 (p. 9). Ours: days 6 to 92 = 1 May 00:00 to 26 July 23:59 Paris = 87 days = 125,280 minutes. [D 1.3]
 - Day 5 dropped: only the last 30 min of 30 April (logging started 23:30), 325 requests. [D 1.3]
 - 10 minutes with 0 requests kept as 0 (8, 17, 18 May); neighbours have 1 to 79 requests; likely short outages or missing logs. [D 1.4]
-- Busiest minute of the real trace ~229,000 requests; our synthetic traces average ~10,800 requests per minute. [D 4.5]
-- Real trace max in one minute 154 thousand is quoted for node-level comparison with Fisk draws (7.8 million). [D 2.2] (see note: the two maxima differ in decisions.md, 154k in 2.2 vs ~229k in 4.5; check before quoting)
+- Busiest minute of the real trace 229,426 requests; our synthetic traces average ~10,800 requests per minute (real mean 10,798). [D 4.5]
+- Real trace maximum: 229,426 requests per minute, 7 July 1998 23:41 Paris time; mean 10,798 req/min; variance/mean C = 34,342 (recomputed from data/fifa_requests_per_minute_days5-92.csv, matches data/synthetic/full_run.log and report.json). [D 4.5, D 2.2]
+- Maximum of the one-week test window used for the distribution experiments (15 to 21 June 1998, 10,080 min) is 153,878 (mean 23,896); the old "154 thousand" in D 2.2 was this value, not the full-trace maximum. Lognorm draws reached 624,733 there (4.06x). [data/synthetic/test_week_fit/report.json; D 2.2]
+- Fisk draws of 7.8 million per minute in that week test: figure from decisions.md, not found in the saved report (Fisk C = null, infinite variance). [D 2.2]
 - Weekly mean: 882 req/min (first week of May), 28,842 (week from 26 June), 982 (last days of July); factor 33. No formal stationarity test. [D 4.1]
 - Dogani claims the FIFA data is stationary (Sec. 6.1, p. 10). [D 4.1]
 - Figure: FIFA requests per minute plot (scripts/plot_fifa_workload.py) is NOT in this folder; it exists only in the git-ignored data/ of the other worktree. See README.md.
