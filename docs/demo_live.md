@@ -16,26 +16,38 @@ The short demo covers steps 60 to 86. That is 08:30 to 08:56 in the trace, when 
 
 ## Before the meeting (once)
 
-1. Start the monitoring stack from the repository folder. This starts only these three services, not the FL workers:
+Run every command from a checkout of master that has `docs/demo_live.md`. The commands use `.venv/bin/python`. If your checkout has no `.venv`, use the path of the one you have. For example, in the worktree `Autoscaling-fifa` that is `../Autoscaling/.venv/bin/python`.
+
+1. If Prometheus and Grafana are running from another checkout, such as an older branch in another folder, stop them there first. Both checkouts use the same compose project (`thesis-autoscaler`), so the next step replaces those containers. Their data volumes stay.
+
+   ```bash
+   cd <the other checkout> && docker compose stop prometheus grafana
+   ```
+
+2. Start the monitoring stack from this checkout. This starts only these three services, not the FL workers:
 
    ```bash
    docker compose up -d cadvisor prometheus grafana
    ```
 
-2. If Prometheus and Grafana were already running from an older version of this repository, restart them once. Prometheus then loads the HAProxy scrape job, and Grafana mounts the new dashboard:
+3. If Prometheus and Grafana were already running from an older version of this repository, restart them once. Prometheus then loads the HAProxy scrape job, and Grafana mounts the new dashboard:
 
    ```bash
    docker compose up -d --force-recreate prometheus grafana
    ```
 
-3. Build the worker image and pull HAProxy:
+4. Build the worker image and pull HAProxy:
 
    ```bash
    docker build -t thesis/live-worker:latest live/worker
    docker pull haproxy:2.8.10-alpine
    ```
 
-4. Check that ports 8090, 8091 and 8404 are free. HAProxy uses them.
+5. Check that ports 8090, 8091 and 8404 are free. HAProxy uses them.
+
+6. Check the setup:
+   - http://localhost:3000/d/autoscaler-live opens the dashboard "Live autoscaler demo (step 4B)". "Dashboard not found" means Grafana still runs from another checkout. Redo steps 1 to 3.
+   - http://localhost:9090/targets shows two targets. `cadvisor` must be UP. `live-haproxy` is DOWN until a live run starts, because HAProxy only exists during a run. It turns UP within about 10 s after a run starts.
 
 ## The demo (about 5 minutes)
 
@@ -89,6 +101,6 @@ The results are in `results/autoscaler_live/report.md`. To redo the setup from s
   ```
 
   This only touches containers with the label `thesis.live=1`.
-- **Empty HAProxy panels:** Prometheus does not have the `live-haproxy` job yet. Redo step 2 of "Before the meeting". The worker and CPU panels only need cAdvisor.
+- **Empty HAProxy panels:** Prometheus does not have the `live-haproxy` job yet. Redo step 3 of "Before the meeting". The worker and CPU panels only need cAdvisor.
 - **Prometheus not reachable:** KHPA then uses the CPU from the cgroup files. The run JSON counts these steps as `prom_missing`.
 - **Laptop load:** a full run peaks at 18 workers, about 6 to 8 CPU cores. The run CSV logs the load average of every step.
