@@ -1,0 +1,21 @@
+% Source: results/autoscaler_live/report.md (requested workers from real CPU); Dogani Table 11 p. 17
+\begin{table}[ht]
+\centering
+\small
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccccccc}
+\toprule
+Scaler & $\theta_U$ & $\theta_O$ & $T_U$ & $T_O$ & $\epsilon_n$ & \#Up & \#Down & Mean workers & p95 (ms) \\
+\midrule
+No autoscaling & 7.63 & 28.80 & 26.67 & 66.11 & 1.00 & 0 & 0 & 8.00 & 1092.7 \\
+KHPA & 4.79 & 3.26 & 31.11 & 17.78 & 2.59 & 17 & 16 & 7.56 & 4.6 \\
+Planner (FedAvg-BiGRU) & 0.27 & 24.62 & 2.78 & 87.78 & 3.93 & 11 & 12 & 9.25 & 4.6 \\
+\midrule \multicolumn{10}{l}{\textit{Dogani \& Khunjush (2024), Table 11, p. 17 (16 nodes, 17 days, simulated)}} \\ \midrule
+No autoscaling & 2.01 & 152.07 & 10.76 & 235.34 & 1.00 & -- & -- & -- & -- \\
+KHPA & 6.23 & 3.05 & 32.05 & 18.23 & 1.30 & -- & -- & -- & -- \\
+Planner (FedAvg-BiGRU) & 0.26 & 13.04 & 1.65 & 75.12 & 1.59 & -- & -- & -- & -- \\
+\bottomrule
+\end{tabular}}
+\caption{Step 4B live run (node 0, 3~h window, 3 scalers, one run each) against Dogani \& Khunjush Table 11. Live requested workers are computed from the measured CPU. Dogani's values come from a simulation over 16 nodes and 17 days, so only the direction compares.}
+\label{tab:live4b}
+\end{table}
