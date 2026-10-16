@@ -24,7 +24,7 @@ Source tags: `D x.y` = docs/decisions.md entry x.y (all paths relative to repo r
 - Ours: Koltuk's two steps. Step 1 draws independent values with the right distribution. Step 2 shuffles values and keeps a shuffle only if the ACF gets closer. Seeds 0 to 15 (one per node). [D 2.1; scripts/synthetic_traces.py]
 - Distribution fits tried: genextreme, burr12, lognorm, gamma, weibull_min, fisk. None passed Anderson-Darling; best A^2 = 1045 (lognorm), critical value 2.49. [D 2.2]
 - Reason: 125,280 points make AD reject everything (Koltuk used hourly data, a few hundred points). [D 2.2]
-- Fisk has infinite variance: draws reached 7.8 million req/min against a real max of 154 thousand; ACF matching stuck (error 0.089 fisk, 0.076 burr12). Lognorm converged slowly, max 4x the real one. [D 2.2]
+- Fisk has infinite variance: in the one-week test (real max 153,878) draws reached 7.8 million req/min; ACF matching stuck (error 0.089 fisk, 0.076 burr12). Lognorm converged slowly, max 624,733 in that week = 4x the real week max. [D 2.2]
 - Decision: draw values from the real trace itself, with replacement (`--cdf empirical`). Distribution exact. [D 2.2]
 - ACF error: lags 1 to 1440 (one day), weight 1/lag. Lag 1 counts 10x lag 10; lags 1 to 10 carry 37% of weight. [D 2.3]
 - Why: predictor looks 3 to 5 min ahead. Test week: lag-1 ACF 0.963 with equal weights, 0.994 with 1/lag weights, real 0.998. [D 2.3]
