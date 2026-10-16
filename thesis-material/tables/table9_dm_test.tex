@@ -1,0 +1,17 @@
+% Source: results/predictors/table8.md (Diebold-Mariano section); Dogani Table 9 p. 15 for comparison
+\begin{table}[ht]
+\centering
+\small
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccc}
+\toprule
+Pair & DM $t{+}3$ & $p$ $t{+}3$ & DM $t{+}4$ & $p$ $t{+}4$ & DM $t{+}5$ & $p$ $t{+}5$ \\
+\midrule
+FedAvg-BiGRU vs FedAvg-LSTM & 1.41 & 0.158 & -1.49 & 0.137 & -6.43 & 1.27$\cdot 10^{-10}$ \\
+FedAvg-BiGRU vs CentralBiGRU & -9.55 & 1.36$\cdot 10^{-21}$ & -2.22 & 0.0265 & 9.64 & 5.52$\cdot 10^{-22}$ \\
+FedAvg-BiGRU vs CentralLSTM & 2.98 & 0.00289 & 4.40 & 1.06$\cdot 10^{-05}$ & -1.16 & 0.245 \\
+\bottomrule
+\end{tabular}}
+\caption{Diebold-Mariano test on absolute errors, all nodes pooled (patience 10). DM $>0$: FedAvg-BiGRU has the larger errors.}
+\label{tab:dm}
+\end{table}
