@@ -27,6 +27,7 @@ class Settings:
     sdr: float = 0.3              # scale-down rate: 30% of the extra pods stay
     fixed_pods: int = 15          # no autoscaling
     threshold: float = 1.0        # target use of a pod: 0.7 = fill each pod to 70% (p. 17)
+    pods_max: int = None          # no cap by default; the live demo (step 4B) caps at 20
 
     @property
     def capacity(self):
@@ -55,6 +56,8 @@ def run(decide, minutes, start_pods, s):
     for t in range(minutes):
         if t >= free_from:                       # CDT is not active (Algorithm 3, line 2)
             wanted = decide(t, current)
+            if s.pods_max is not None:
+                wanted = min(wanted, s.pods_max)
             if wanted > current:
                 ups += 1
                 free_from = t + s.cdt_up
