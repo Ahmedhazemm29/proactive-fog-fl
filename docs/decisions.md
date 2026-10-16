@@ -304,6 +304,19 @@ The code and results are in this repository:
 - **We:** the runner reads each worker's cgroup file (cpu.stat) at every step boundary. That gives the exact CPU time of each step. Prometheus is only used for KHPA's decision and for Grafana.
 - **Why:** Prometheus' rate() window and its 5 s scrapes make its value trail the real CPU by about half a step. The step CSVs keep both values: `cpu_total` from the cgroup and `prom_cpu` from Prometheus.
 
+### 4B.11 The cap of 20 workers
+
+- **Dogani:** the planner has a minimum, Pods_min = 5 (Table 3, p. 10). Step 4A used no maximum.
+- **We:** run at most 20 workers. The limit was set in the step 4B task, as a safety limit for the laptop. The code keeps it in one constant, `MAX_WORKERS = 20` in `autoscaler/cluster.py`. Everything uses that constant:
+  - the scalers can never ask for more than 20 (`pods_max` in `scripts/live_run.py`);
+  - `scale_to()` never starts more than 20;
+  - exactly 20 containers are created, at the fixed addresses 172.30.0.11 to 172.30.0.30;
+  - HAProxy lists exactly these 20 workers.
+- **Why 20:**
+  - 20 workers x 0.5 CPU is at most 10 of the laptop's 16 threads. That leaves room for HAProxy, the load generator, Prometheus and cAdvisor.
+  - The busiest minute is scaled to need 18 workers (entry 4B.4), so 2 workers are spare.
+- **Effect:** the cap never mattered in the full runs. KHPA and the planner peaked at 17 workers. The workers requested from CPU reached 19 in one step, still below 20.
+
 ## Findings that differ from Dogani
 
 ### 4.1 The FIFA trace is not stationary
