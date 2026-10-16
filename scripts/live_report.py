@@ -5,6 +5,7 @@ simulation of the same window.
 Usage (after the three runs of scripts/live_run.py):
     .venv/bin/python scripts/live_report.py
     .venv/bin/python scripts/live_report.py --tag demo     # the runs made with --tag demo
+    .venv/bin/python scripts/live_report.py --dir results/autoscaler_live/calm   # another window
 
 1. Live, requested workers from real CPU: ceil(CPU of the step / (0.5 x 0.7)),
    at least 1. This is what the task asks for. When workers are saturated the
@@ -143,13 +144,14 @@ def main():
     parser = argparse.ArgumentParser(description="Report of the live runs.")
     parser.add_argument("--dir", default=os.path.join(ROOT, "results", "autoscaler_live"))
     parser.add_argument("--tag", default="", help="report the runs made with this --tag")
+    parser.add_argument("--calibration", default=os.path.join(ROOT, "results", "autoscaler_live", "calibration.json"))
     args = parser.parse_args()
     suffix = f"_{args.tag}" if args.tag else ""
     names = [n for n in SCALERS if os.path.exists(os.path.join(args.dir, f"steps_{n}{suffix}.csv"))]
     assert names, "no runs found"
     steps = {n: read_steps(os.path.join(args.dir, f"steps_{n}{suffix}.csv")) for n in names}
     runs = {n: json.load(open(os.path.join(args.dir, f"run_{n}{suffix}.json"))) for n in names}
-    calibration = json.load(open(os.path.join(args.dir, "calibration.json")))
+    calibration = json.load(open(args.calibration))
     info = json.load(open(os.path.join(args.dir, "window.json")))
     first, length = runs[names[0]]["first_step"], runs[names[0]]["steps"]
     assert all((r["first_step"], r["steps"]) == (first, length) for r in runs.values()), "runs cover other steps"
@@ -193,7 +195,8 @@ def main():
     lines = [
         "# Live autoscaler demo (step 4B)",
         "",
-        f"Node 0, {str(minutes[0]).replace('T', ' ')} to {str(minutes[-1]).replace('T', ' ')} "
+        f"Node {int(info['node'].split('_')[-1])}, {str(minutes[0]).replace('T', ' ')} to "
+        f"{str(minutes[-1]).replace('T', ' ')} "
         f"(steps {first} to {first + length - 1}), replayed with real worker containers behind HAProxy.",
         f"One step = one trace minute = {runs[names[0]]['step_seconds']:g} s. "
         "Cooldowns 3 steps after a scale-up (30 s) and 5 after a scale-down (50 s), SDR 0.3.",

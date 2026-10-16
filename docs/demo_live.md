@@ -91,6 +91,22 @@ The full window has 180 steps and takes about 31 minutes per scaler:
 
 The results are in `results/autoscaler_live/report.md`. To redo the setup from scratch, run `scripts/live_calibrate.py` (about 5 minutes) and then `scripts/live_prepare.py`.
 
+## Other windows
+
+Three more windows have their own folders: `calm`, `rise` and `spiky` (decisions 4B.12 and 4B.13). Each folder holds the window and its results. To redo one, here the calm window:
+
+```bash
+.venv/bin/python scripts/live_windows.py
+.venv/bin/python scripts/live_prepare.py --node 1 --start "1998-07-20 08:38" --out-dir results/autoscaler_live/calm
+.venv/bin/python scripts/live_run.py --scaler none --window-dir results/autoscaler_live/calm --out-dir results/autoscaler_live/calm --data-dir data/autoscaler_live/calm
+.venv/bin/python scripts/live_report.py --dir results/autoscaler_live/calm
+```
+
+- **Windows:** `live_windows.py` prints the `live_prepare.py` command of each window. The three windows are already prepared, so you can skip these two steps.
+- **Runs:** run `live_run.py` once per scaler: `none`, `khpa` and `planner`. Each run takes about 31 minutes.
+- **All windows:** after the reports of all windows, `.venv/bin/python scripts/live_windows_report.py` writes `results/autoscaler_live/windows_report.md` and `windows_workers.png`.
+- **Short demo:** `--first-step` and `--steps` work here too. For example, the rise window jumps from 12 to 18 workers at step 90, so `--first-step 75 --steps 27` shows it in 5 minutes.
+
 ## If something goes wrong
 
 - **Stopping and cleanup:** Ctrl+C stops a run and removes all its containers. The runner also cleans up after an error. To clean up by hand:

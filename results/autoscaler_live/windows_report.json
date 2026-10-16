@@ -1,0 +1,567 @@
+{
+  "windows": {
+    "original": {
+      "window": {
+        "node": "node_00",
+        "predictor": "FedAvg-BiGRU",
+        "first_minute": "1998-07-23T07:30",
+        "last_minute": "1998-07-23T10:29",
+        "minutes": 180,
+        "warmup": 3,
+        "factor": 0.15538836627706218,
+        "workload_pod": 1650,
+        "peak_workers": 18,
+        "fixed_pods": 8,
+        "mean_demand_workers": 8.111656565656565,
+        "requested_traffic_max": 18,
+        "raw_mean": 86134.06666666667,
+        "raw_max": 191134.0
+      },
+      "shape": {
+        "node": 0,
+        "first_minute": "1998-07-23T07:30",
+        "last_minute": "1998-07-23T10:29",
+        "warmup_first_row": 119967,
+        "first_row": 119970,
+        "last_row": 120149,
+        "node_median": 2909.0,
+        "passes_guard": true,
+        "middle_jump": 11489.0,
+        "mean": 86134.06666666667,
+        "peak": 191134.0,
+        "peak_mean": 2.219029094953526,
+        "biggest_jump": -44145.0,
+        "biggest_jump_pct": 51.25149863275158,
+        "biggest_jump_to_minute": 95
+      },
+      "rows": {
+        "none": {
+          "theta_u": 7.6273849607182935,
+          "theta_o": 28.7989417989418,
+          "t_u": 26.666666666666668,
+          "t_o": 66.11111111111111,
+          "speedup": 1.0,
+          "speedup_zero": [],
+          "scale_ups": 0,
+          "scale_downs": 0,
+          "actions": 0,
+          "mean_workers": 8.0,
+          "sent": 2409162,
+          "failed": 124471,
+          "failed_pct": 5.16656829221115,
+          "p95_ms": 1092.720894212107
+        },
+        "khpa": {
+          "theta_u": 4.793456381175679,
+          "theta_o": 3.2592754467754466,
+          "t_u": 31.11111111111111,
+          "t_o": 17.77777777777778,
+          "speedup": 2.5873676047720546,
+          "speedup_zero": [],
+          "scale_ups": 17,
+          "scale_downs": 16,
+          "actions": 33,
+          "mean_workers": 7.555555555555555,
+          "sent": 2409162,
+          "failed": 0,
+          "failed_pct": 0.0,
+          "p95_ms": 4.639134610988549
+        },
+        "planner": {
+          "theta_u": 0.2714850604427488,
+          "theta_o": 24.618316868316867,
+          "t_u": 2.7777777777777777,
+          "t_o": 87.77777777777777,
+          "speedup": 3.9262437011945037,
+          "speedup_zero": [],
+          "scale_ups": 11,
+          "scale_downs": 12,
+          "actions": 23,
+          "mean_workers": 9.25,
+          "sent": 2409162,
+          "failed": 0,
+          "failed_pct": 0.0,
+          "p95_ms": 4.634069103849469
+        }
+      },
+      "speedup_from_traffic": {
+        "none": 1.0,
+        "khpa": 3.185637566115649,
+        "planner": 2.342323853676656
+      }
+    },
+    "calm": {
+      "window": {
+        "node": "node_01",
+        "predictor": "FedAvg-BiGRU",
+        "first_minute": "1998-07-20T08:38",
+        "last_minute": "1998-07-20T11:37",
+        "minutes": 180,
+        "warmup": 3,
+        "factor": 1.7300634939127395,
+        "workload_pod": 1650,
+        "peak_workers": 18,
+        "fixed_pods": 17,
+        "mean_demand_workers": 17.25910101010101,
+        "requested_traffic_max": 18,
+        "raw_mean": 16460.405555555557,
+        "raw_max": 17167.0
+      },
+      "shape": {
+        "node": 1,
+        "first_minute": "1998-07-20T08:38",
+        "last_minute": "1998-07-20T11:37",
+        "warmup_first_row": 115715,
+        "first_row": 115718,
+        "last_row": 115897,
+        "score": 1.042926915868483,
+        "node_median": 8867.5,
+        "passes_guard": true,
+        "middle_jump": 24.0,
+        "mean": 16460.405555555557,
+        "peak": 17167.0,
+        "peak_mean": 1.042926915868483,
+        "biggest_jump": 869.0,
+        "biggest_jump_pct": 5.279335293817858,
+        "biggest_jump_to_minute": 85
+      },
+      "rows": {
+        "none": {
+          "theta_u": 5.141812865497077,
+          "theta_o": 0.24305555555555555,
+          "t_u": 72.22222222222223,
+          "t_o": 3.888888888888889,
+          "speedup": 1.0,
+          "speedup_zero": [],
+          "scale_ups": 0,
+          "scale_downs": 0,
+          "actions": 0,
+          "mean_workers": 17.0,
+          "sent": 5125953,
+          "failed": 0,
+          "failed_pct": 0.0,
+          "p95_ms": 4.979829745934692
+        },
+        "khpa": {
+          "theta_u": 1.3752245537591252,
+          "theta_o": 1.2170933188090052,
+          "t_u": 23.88888888888889,
+          "t_o": 21.11111111111111,
+          "speedup": 0.8030237974461795,
+          "speedup_zero": [],
+          "scale_ups": 15,
+          "scale_downs": 15,
+          "actions": 30,
+          "mean_workers": 17.716666666666665,
+          "sent": 5125953,
+          "failed": 0,
+          "failed_pct": 0.0,
+          "p95_ms": 4.923063269961856
+        },
+        "planner": {
+          "theta_u": 0.6156595191682911,
+          "theta_o": 1.7401960784313724,
+          "t_u": 11.666666666666666,
+          "t_o": 28.333333333333332,
+          "speedup": 0.9977775750212559,
+          "speedup_zero": [],
+          "scale_ups": 1,
+          "scale_downs": 0,
+          "actions": 1,
+          "mean_workers": 17.988888888888887,
+          "sent": 5125953,
+          "failed": 0,
+          "failed_pct": 0.0,
+          "p95_ms": 4.93661661967053
+        }
+      },
+      "speedup_from_traffic": {
+        "none": "nan",
+        "khpa": 0.0,
+        "planner": 0.0
+      }
+    },
+    "rise": {
+      "window": {
+        "node": "node_07",
+        "predictor": "FedAvg-BiGRU",
+        "first_minute": "1998-07-12T00:01",
+        "last_minute": "1998-07-12T03:00",
+        "minutes": 180,
+        "warmup": 3,
+        "factor": 0.1452173615423355,
+        "workload_pod": 1650,
+        "peak_workers": 18,
+        "fixed_pods": 6,
+        "mean_demand_workers": 5.717043771043771,
+        "requested_traffic_max": 18,
+        "raw_mean": 64958.938888888886,
+        "raw_max": 204521.0
+      },
+      "shape": {
+        "node": 7,
+        "first_minute": "1998-07-12T00:01",
+        "last_minute": "1998-07-12T03:00",
+        "warmup_first_row": 103678,
+        "first_row": 103681,
+        "last_row": 103860,
+        "score": 1.1026504007788167,
+        "node_median": 2092.5,
+        "passes_guard": true,
+        "middle_jump": 71627.0,
+        "mean": 64958.938888888886,
+        "peak": 204521.0,
+        "peak_mean": 3.148465838548095,
+        "biggest_jump": 71627.0,
+        "biggest_jump_pct": 110.26504007788168,
+        "biggest_jump_to_minute": 90
+      },
+      "rows": {
+        "none": {
+          "theta_u": 7.658730158730159,
+          "theta_o": 49.5,
+          "t_u": 26.666666666666668,
+          "t_o": 68.88888888888889,
+          "speedup": 1.0,
+          "speedup_zero": [],
+          "scale_ups": 0,
+          "scale_downs": 0,
+          "actions": 0,
+          "mean_workers": 6.0,
+          "sent": 1697962,
+          "failed": 144148,
+          "failed_pct": 8.489471495828528,
+          "p95_ms": 1092.4713833461283
+        },
+        "khpa": {
+          "theta_u": 14.783608729687161,
+          "theta_o": 0.20833333333333334,
+          "t_u": 59.44444444444444,
+          "t_o": 1.6666666666666667,
+          "speedup": 6.91186359388611,
+          "speedup_zero": [],
+          "scale_ups": 16,
+          "scale_downs": 17,
+          "actions": 33,
+          "mean_workers": 4.633333333333334,
+          "sent": 1697962,
+          "failed": 13755,
+          "failed_pct": 0.8100888005738645,
+          "p95_ms": 494.1160727597889
+        },
+        "planner": {
+          "theta_u": 0.3812636165577342,
+          "theta_o": 41.71455704789038,
+          "t_u": 1.6666666666666667,
+          "t_o": 92.77777777777777,
+          "speedup": 4.1022161597257885,
+          "speedup_zero": [],
+          "scale_ups": 9,
+          "scale_downs": 8,
+          "actions": 17,
+          "mean_workers": 7.161111111111111,
+          "sent": 1697962,
+          "failed": 0,
+          "failed_pct": 0.0,
+          "p95_ms": 4.8826163709236425
+        }
+      },
+      "speedup_from_traffic": {
+        "none": 1.0,
+        "khpa": "inf",
+        "planner": 2.896353250902875
+      }
+    },
+    "spiky": {
+      "window": {
+        "node": "node_02",
+        "predictor": "FedAvg-BiGRU",
+        "first_minute": "1998-07-20T22:45",
+        "last_minute": "1998-07-21T01:44",
+        "minutes": 180,
+        "warmup": 3,
+        "factor": 0.13147875976130186,
+        "workload_pod": 1650,
+        "peak_workers": 18,
+        "fixed_pods": 4,
+        "mean_demand_workers": 4.491700336700337,
+        "requested_traffic_max": 18,
+        "raw_mean": 56368.8,
+        "raw_max": 225892.0
+      },
+      "shape": {
+        "node": 2,
+        "first_minute": "1998-07-20T22:45",
+        "last_minute": "1998-07-21T01:44",
+        "warmup_first_row": 116562,
+        "first_row": 116565,
+        "last_row": 116744,
+        "score": 1.142653382722357,
+        "node_median": 3974.0,
+        "passes_guard": true,
+        "middle_jump": -64410.0,
+        "mean": 56368.8,
+        "peak": 225892.0,
+        "peak_mean": 4.007394161309093,
+        "biggest_jump": -64410.0,
+        "biggest_jump_pct": 114.2653382722357,
+        "biggest_jump_to_minute": 90
+      },
+      "rows": {
+        "none": {
+          "theta_u": 8.88888888888889,
+          "theta_o": 27.22222222222222,
+          "t_u": 28.88888888888889,
+          "t_o": 58.333333333333336,
+          "speedup": 1.0,
+          "speedup_zero": [],
+          "scale_ups": 0,
+          "scale_downs": 0,
+          "actions": 0,
+          "mean_workers": 4.0,
+          "sent": 1334035,
+          "failed": 163881,
+          "failed_pct": 12.284610223869688,
+          "p95_ms": 1093.862621757762
+        },
+        "khpa": {
+          "theta_u": 2.771026041859375,
+          "theta_o": 5.246913580246913,
+          "t_u": 13.333333333333334,
+          "t_o": 16.666666666666668,
+          "speedup": 3.3517504015293933,
+          "speedup_zero": [],
+          "scale_ups": 13,
+          "scale_downs": 10,
+          "actions": 23,
+          "mean_workers": 4.416666666666667,
+          "sent": 1334035,
+          "failed": 1336,
+          "failed_pct": 0.10014729748469868,
+          "p95_ms": 4.803413166155223
+        },
+        "planner": {
+          "theta_u": 0.20613373554550027,
+          "theta_o": 48.276234567901234,
+          "t_u": 1.1111111111111112,
+          "t_o": 87.77777777777777,
+          "speedup": 4.527396570574783,
+          "speedup_zero": [],
+          "scale_ups": 9,
+          "scale_downs": 6,
+          "actions": 15,
+          "mean_workers": 5.938888888888889,
+          "sent": 1334035,
+          "failed": 2,
+          "failed_pct": 0.00014992110401901,
+          "p95_ms": 4.707495442562504
+        }
+      },
+      "speedup_from_traffic": {
+        "none": 1.0,
+        "khpa": 2.643588847557579,
+        "planner": 1.6643216818267668
+      }
+    }
+  },
+  "summary": {
+    "theta_u": {
+      "none": [
+        7.329204218458605,
+        5.141812865497077,
+        8.88888888888889,
+        4
+      ],
+      "khpa": [
+        5.930828926620335,
+        1.3752245537591252,
+        14.783608729687161,
+        4
+      ],
+      "planner": [
+        0.36863548292856857,
+        0.20613373554550027,
+        0.6156595191682911,
+        4
+      ]
+    },
+    "theta_o": {
+      "none": [
+        26.441054894179892,
+        0.24305555555555555,
+        49.5,
+        4
+      ],
+      "khpa": [
+        2.482903919791174,
+        0.20833333333333334,
+        5.246913580246913,
+        4
+      ],
+      "planner": [
+        29.087326140634964,
+        1.7401960784313724,
+        48.276234567901234,
+        4
+      ]
+    },
+    "t_u": {
+      "none": [
+        38.611111111111114,
+        26.666666666666668,
+        72.22222222222223,
+        4
+      ],
+      "khpa": [
+        31.944444444444443,
+        13.333333333333334,
+        59.44444444444444,
+        4
+      ],
+      "planner": [
+        4.305555555555555,
+        1.1111111111111112,
+        11.666666666666666,
+        4
+      ]
+    },
+    "t_o": {
+      "none": [
+        49.30555555555556,
+        3.888888888888889,
+        68.88888888888889,
+        4
+      ],
+      "khpa": [
+        14.305555555555554,
+        1.6666666666666667,
+        21.11111111111111,
+        4
+      ],
+      "planner": [
+        74.16666666666666,
+        28.333333333333332,
+        92.77777777777777,
+        4
+      ]
+    },
+    "speedup": {
+      "none": [
+        1.0,
+        1.0,
+        1.0,
+        4
+      ],
+      "khpa": [
+        3.4135013494084347,
+        0.8030237974461795,
+        6.91186359388611,
+        4
+      ],
+      "planner": [
+        3.388408501629083,
+        0.9977775750212559,
+        4.527396570574783,
+        4
+      ]
+    },
+    "failed_pct": {
+      "none": [
+        6.485162502977341,
+        0.0,
+        12.284610223869688,
+        4
+      ],
+      "khpa": [
+        0.22755902451464077,
+        0.0,
+        0.8100888005738645,
+        4
+      ],
+      "planner": [
+        3.74802760047525e-05,
+        0.0,
+        0.00014992110401901,
+        4
+      ]
+    },
+    "p95_ms": {
+      "none": [
+        821.008682265483,
+        4.979829745934692,
+        1093.862621757762,
+        4
+      ],
+      "khpa": [
+        127.12042095172363,
+        4.639134610988549,
+        494.1160727597889,
+        4
+      ],
+      "planner": [
+        4.790199384251537,
+        4.634069103849469,
+        4.93661661967053,
+        4
+      ]
+    },
+    "mean_workers": {
+      "none": [
+        8.75,
+        4.0,
+        17.0,
+        4
+      ],
+      "khpa": [
+        8.580555555555554,
+        4.416666666666667,
+        17.716666666666665,
+        4
+      ],
+      "planner": [
+        10.084722222222222,
+        5.938888888888889,
+        17.988888888888887,
+        4
+      ]
+    },
+    "actions": {
+      "none": [
+        0.0,
+        0.0,
+        0.0,
+        4
+      ],
+      "khpa": [
+        29.75,
+        23.0,
+        33.0,
+        4
+      ],
+      "planner": [
+        14.0,
+        1.0,
+        23.0,
+        4
+      ]
+    }
+  },
+  "speedup_winner": {
+    "original": "planner",
+    "calm": "planner",
+    "rise": "KHPA",
+    "spiky": "planner"
+  },
+  "speedup_winner_from_traffic": {
+    "original": "KHPA",
+    "calm": "not defined",
+    "rise": "KHPA",
+    "spiky": "KHPA"
+  },
+  "khpa_prometheus_over_real_cpu": {
+    "original": 0.980140523017571,
+    "calm": 0.9983891769526777,
+    "rise": 0.8169740228879873,
+    "spiky": 0.9926643765394025
+  }
+}

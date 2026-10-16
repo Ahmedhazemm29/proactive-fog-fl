@@ -16,6 +16,7 @@ The code and results are in this repository:
 - Step 4A sensitivity: `scripts/autoscaler_sensitivity.py`, results in `results/autoscaler_sensitivity/`
 - Step 4A fair runs (same Pods_min for KHPA and the planner): results in `results/autoscaler_fair/`
 - Step 4B, live demo with real containers: `autoscaler/cluster.py`, `autoscaler/loadgen.py`, `autoscaler/live.py`, `scripts/live_*.py`, results in `results/autoscaler_live/`, guide in `docs/demo_live.md`
+- Step 4B on three more windows: `scripts/live_windows.py`, `scripts/live_windows_report.py`, results in `results/autoscaler_live/calm/`, `rise/` and `spiky/`, summary in `results/autoscaler_live/windows_report.md`
 
 ## Step 1: the real FIFA workload
 
@@ -317,6 +318,48 @@ The code and results are in this repository:
   - The busiest minute is scaled to need 18 workers (entry 4B.4), so 2 workers are spare.
 - **Effect:** the cap never mattered in the full runs. KHPA and the planner peaked at 17 workers. The workers requested from CPU reached 19 in one step, still below 20.
 
+### 4B.12 Three more windows, chosen by a rule
+
+- **Dogani:** reports Table 11 over 16 nodes and 17 days (p. 17), not over one window.
+- **We:** repeat the live runs on three more windows, so the result does not rest on one window. A fixed rule picks them from all 16 nodes (`scripts/live_windows.py`):
+  - **Candidates:** every 180-minute window that lies, with its 3 warm-up minutes, in the test minutes with forecasts. These are the minutes step 4A simulates.
+  - **Guard:** the window mean is at least the median of the node's test minutes.
+  - **Calm:** the lowest peak/mean.
+  - **Rise:** the biggest rise from one minute to the next, divided by the window mean. The window is centred on it, so the rise goes from window minute 89 to 90.
+  - **Spiky:** the same with the biggest jump up or down.
+
+  | Window | Node | Time (1998) | Trace rows | Mean (requests/min) | Peak/mean | Biggest 1-minute jump |
+  |---|---|---|---|---|---|---|
+  | Calm | 1 | 20 July, 08:38 to 11:37 | 115,718 to 115,897 | 16,460 | 1.04 | +869 (5% of the mean) |
+  | Rise | 7 | 12 July, 00:01 to 03:00 | 103,681 to 103,860 | 64,959 | 3.15 | +71,627 (110%) |
+  | Spiky | 2 | 20 July 22:45 to 21 July 01:44 | 116,565 to 116,744 | 56,369 | 4.01 | -64,410 (114%) |
+
+- **Why the guard:** without it, the spiky rule picks node 4 at night, from 17 July 03:45. That window has a mean of 169 requests per minute, against a node median of 1,734. A jump of 259% of such a mean is noise, not an event. Node 7's median is 2,092, so the rise window passes the guard easily.
+- **Why centred:** the first window is centred on its busiest half hour. Without centring, the best jump of the guarded windows falls into the last minute of its window (node 7, from 11 July 22:32), where no scaler can react to it.
+- **Rise and spiky differ:** the biggest jump overall is a drop, so a separate rule picks the biggest rise. In both windows the centred jump is also the biggest jump of the window.
+- **Scale:** as in 4B.4, the busiest minute of each window needs 18 workers.
+
+  | Window | Factor | Mean demand (workers) | No autoscaling |
+  |---|---|---|---|
+  | Calm | 1.7301 | 17.26 | 17 workers |
+  | Rise | 0.1452 | 5.72 | 6 workers |
+  | Spiky | 0.1315 | 4.49 | 4 workers |
+
+- **Same setup:** everything else is as in 4B.1 to 4B.11: 1,650 requests per worker and step, 10 s per step, the cooldowns, the cap of 20 and the run order no autoscaling, KHPA, planner. All three scalers start at the window's fixed count.
+- **Planner below its minimum:** in the spiky window the start is 4 workers, one below the planner's minimum of 5. The planner keeps these 4 workers for the first 62 steps, until its forecasts ask for more. Algorithm 3 applies Pods_min only when it scales down (`planner_step` in `autoscaler/scalers.py`), and the step 4A simulation does the same. A start at 5 would give the planner θO 60.82 instead of 48.28 and εn 4.23 instead of 4.53, estimated with the CPU measured in its run. No answer in `windows_report.md` changes.
+- **Limits of these windows:** calm keeps about 17 of the 20 workers busy for the whole run, so the scalers have little room. Spiky needs 18 workers for a single minute only.
+
+### 4B.13 Options and folders for other windows
+
+- **We added:**
+  - `live_prepare.py --node N --start "YYYY-MM-DD HH:MM" --out-dir DIR`: the window of node N that starts at that minute. Without `--start`, the window is still centred on node 0's busiest half hour. The default run gives byte-identical `window.csv` and `window.json`. Another window needs `--out-dir`, so it can never overwrite the files of the first window.
+  - `live_report.py --dir DIR`: the report of a window folder. It reads the shared `calibration.json`, and its header names the window's node. On the first window it gives a byte-identical `report.md` and `report.json`.
+  - `live_windows.py`: the rule of 4B.12. It writes `results/autoscaler_live/windows.json` with the best window of every node and rule.
+  - `live_windows_report.py`: the tables over all four windows, the answers and `windows_workers.png`.
+- **Folders:** each new window has its own folder, `results/autoscaler_live/calm/`, `rise/` and `spiky/`, with the window, the step CSVs, the run JSONs, `report.md` and the plots. The response times of all requests go to `data/autoscaler_live/<window>/`, not to git. The files of the first window stay where they were.
+- **Runs:** `live_run.py` already had `--window-dir`, `--out-dir` and `--data-dir`. One batch ran the 9 runs one after another, with 30 s between runs, on 16 October 2026 from 08:24 to 13:05. Each run rebuilds the cluster from scratch. A failed run would be retried once and then skipped. All 9 runs worked on the first try and left no container behind.
+- **Check first:** a 1-minute KHPA run on the rise window, steps 88 to 90, tested the new folders, the Prometheus query and the cleanup before the long runs.
+
 ## Findings that differ from Dogani
 
 ### 4.1 The FIFA trace is not stationary
@@ -418,3 +461,43 @@ The code and results are in this repository:
 - **We found:** the live planner chose the same worker count as the step 4A simulation in all 180 steps. That is expected, because it only reads the forecasts. KHPA differed in 142 of 180 steps, because live KHPA reads CPU and the simulated one reads traffic. Its metrics are still close: simulated θU 4.65 and θO 3.51 (traffic measure), live 4.79 and 3.26 (CPU measure).
 - **Load generator:** in every full run 99% of the requests were queued within 1.1 ms of their planned time. There were no client timeouts and no broken connections. The highest load average was 8.8 on 16 threads.
 - **Results:** `results/autoscaler_live/report.md`, plots `plot_none.png`, `plot_khpa.png`, `plot_planner.png`.
+
+### 4.14 Over four windows, the planner always has fewer shortages
+
+- **Setup:** the live runs of step 4B on four windows: the first one and the calm, rise and spiky windows of entry 4B.12. Requested workers come from the real CPU.
+- **Dogani:** the planner has the lowest θU and TU (Table 11, p. 17).
+- **We found:** this holds in all four windows.
+
+  | Window | θU planner / KHPA | TU planner / KHPA | Failed requests planner / KHPA |
+  |---|---|---|---|
+  | Original | 0.27 / 4.79 | 2.78 / 31.11 | 0 / 0 |
+  | Calm | 0.62 / 1.38 | 11.67 / 23.89 | 0 / 0 |
+  | Rise | 0.38 / 14.78 | 1.67 / 59.44 | 0 / 13,755 |
+  | Spiky | 0.21 / 2.77 | 1.11 / 13.33 | 2 / 1,336 |
+
+  Two more of Dogani's claims also hold in every window. The planner scales less often, with 14 actions against KHPA's 30 on average. KHPA over-provisions less, with θO 2.48 against 29.09 on average.
+- **Users:** unlike on the first window (finding 4.12), users now see a difference. Over all four windows the planner lost 2 requests and KHPA 15,091. KHPA's losses came at the rise and at the spike, as 503s from HAProxy and a few timeouts. The planner pays with 18% more workers on average: 10.08 against 8.58.
+- **The forecasts did not see the jumps:** for the jump minute, FedAvg-BiGRU forecast 11.5 workers in the rise window and 12.7 in the spiky window, while 18 were needed. The planner got through because it already ran more workers: 12 against KHPA's 8 at the rise, and 12 against 11 at the spike. That headroom comes from Algorithm 3 itself. It takes the maximum of the next forecasts and removes only 70% of the extra workers.
+- **Results:** `results/autoscaler_live/windows_report.md` and `windows_workers.png`.
+
+### 4.15 εn can rank first the scaler that loses requests
+
+- **Dogani:** the planner has a higher εn than KHPA (Table 11, p. 17).
+- **We found:** with requested workers from CPU, the planner has the higher εn in the original, calm and spiky windows. KHPA has it in the rise window, 6.91 against 4.10. Yet in that window KHPA lost 13,755 requests (0.81%) with a p95 of 494 ms, and the planner lost none.
+- **Why:** Eq. 18 multiplies four ratios against no autoscaling. In the rise window KHPA almost never over-provisioned: θO 0.21 and TO 1.67, against 49.50 and 68.89 without autoscaling. These two ratios, 238 and 41, outweigh KHPA's shortages, which are about twice those of no autoscaling. A scaler that runs too few workers most of the time can win εn this way.
+- **With requested workers from the traffic:** KHPA has the higher εn in the original, rise and spiky windows. In the calm window εn is not defined, because no autoscaling is never over-provisioned there: its θO and TO are 0.
+- **Consequence:** εn alone does not tell which scaler serves users better. Its mean over the four windows is a tie: 3.41 for KHPA and 3.39 for the planner.
+
+### 4.16 On a flat window, no scaler beats fixed workers
+
+- **Dogani:** both scalers beat no autoscaling, with εn above 1 (Table 11, p. 17).
+- **We found:** in the calm window, with peak/mean 1.04, εn is 0.80 for KHPA and 0.998 for the planner. No run lost a request. The 17 fixed workers, the mean demand, already fit. KHPA's 30 scaling actions only trade shortages for surpluses. The planner added one worker at the start and kept 18.
+- **Why it differs:** Dogani's no autoscaling keeps far more pods than needed (θO 152.07). Ours keeps the window's mean demand, and on flat traffic that is already close to right. In the three windows that move, both scalers beat no autoscaling clearly, with εn 2.59 to 6.91.
+
+### 4.17 KHPA's Prometheus input read low in one run
+
+- **We found:** in the rise window, the CPU that KHPA read from Prometheus was 82% of the real CPU over the run. In the other three KHPA runs it was 98% to 100%.
+- **No data was lost:** over 25 minutes of that run, Prometheus' CPU counters and the cgroup files agree within 0.1%.
+- **Timing:** KHPA reads a 15 s rate at each step start, every 10 s, while Prometheus scrapes every 5 s. During the run KHPA got about 10% less than the same query gives when evaluated afterwards, so the newest scrape was often not stored yet. The rest of the gap comes from how rate() extrapolates in such a short window. The step clock and the scrape clock keep the same offset for a whole run, so one run can read low throughout while others do not. The planner run on the same window read 99.7%.
+- **Effect:** in that run KHPA asked for about 18% fewer workers than its own rule would with the real CPU. At the rise it ran 8 workers. Part of its 13,755 lost requests therefore comes from the measurement, not from the KHPA rule.
+- **Not changed:** the runs kept the step 4B setup. Reading KHPA's CPU from the cgroup files, or querying a longer window a moment after the step start, would remove this effect in later runs. `windows_report.md` lists this check for every window.
