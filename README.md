@@ -59,7 +59,7 @@ t=    60s intensity=0.55 steps/s=  142.3 acc=0.912
 
 | UI | URL | Login |
 |----|-----|-------|
-| Grafana | http://localhost:3000 | `admin` / `admin` |
+| Grafana | http://localhost:3000 | – |
 | Prometheus | http://localhost:9090 | – |
 | cAdvisor | http://localhost:8080 | – |
 
