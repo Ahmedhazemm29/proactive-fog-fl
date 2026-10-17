@@ -1,0 +1,16 @@
+{
+  "node": "node_07",
+  "predictor": "FedAvg-BiGRU",
+  "first_minute": "1998-07-12T00:01",
+  "last_minute": "1998-07-12T03:00",
+  "minutes": 180,
+  "warmup": 3,
+  "factor": 0.1452173615423355,
+  "workload_pod": 1650,
+  "peak_workers": 18,
+  "fixed_pods": 6,
+  "mean_demand_workers": 5.717043771043771,
+  "requested_traffic_max": 18,
+  "raw_mean": 64958.938888888886,
+  "raw_max": 204521.0
+}
