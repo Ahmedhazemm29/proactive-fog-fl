@@ -27,8 +27,7 @@ calls before every run.
 
 ## 2. What to open
 
-1. Grafana: log in at http://localhost:3000 (user `admin`, password from
-   `GF_SECURITY_ADMIN_PASSWORD` in `docker-compose.yml`). Then open the demo
+1. Grafana: log in at http://localhost:3000. Then open the demo
    dashboard in kiosk mode: http://localhost:3000/d/cpu-demo?orgId=1&kiosk
    (Esc leaves kiosk mode). Per worker it shows demand (orange, dashed), used
    (blue) and the limit (thick green steps), plus "Both limits together".

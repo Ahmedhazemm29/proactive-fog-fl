@@ -51,7 +51,7 @@ Run every command from a checkout of master that has `docs/demo_live.md`. The co
 
 ## The demo (about 5 minutes)
 
-1. Open Grafana at http://localhost:3000/d/autoscaler-live (login admin / admin). Set the time range to "Last 10 minutes".
+1. Open Grafana at http://localhost:3000/d/autoscaler-live. Set the time range to "Last 10 minutes".
 
 2. Start one scaler. The planner is the most interesting:
 
