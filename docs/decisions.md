@@ -149,6 +149,37 @@ The code and results are in this repository:
 - **We:** compare absolute errors, account for the overlap of multi-step forecasts, and use the Harvey, Leybourne and Newbold small-sample correction. We test FedAvg-BiGRU against each other model at t+3, t+4 and t+5, on all nodes' test windows together.
 - **Why:** absolute errors match the MAE loss. The correction is the standard version of the test.
 
+### 3.11 Checks on the gap to Dogani's MAPE
+
+- **Question:** our MAPE at t+3 is 13.96 for FedAvg-BiGRU and 13.23 for CentralBiGRU, against Dogani's 9.04 and 8.49. FedAvg-BiGRU was also better at t+5 (12.82) than at t+3. Is something wrong?
+- **Horizon alignment:** correct. A test feeds a trace where minute i has i requests through `predict()` and the Table 8 evaluation. A model that predicts "last input + h" has an error of exactly 0 at t+3, t+4 and t+5. Shifted by one minute, it is off by exactly 1 request. The pooled windows of the central models carry the same targets (`tests/test_predictors.py`). The MAE of every model also grows steadily from t+1 to t+5.
+- **MAPE:** Eq. 13, the mean of |predicted - real| / real, in %. We compute it on real requests: the predictions are unscaled, the real values are rounded to whole requests, and only minutes with exactly 0 requests are skipped (51 per model and step). Nothing else is filtered. Dogani gives the same formula but does not say in which units he applied it (finding 4.20).
+- **Settings next to Dogani's:**
+
+  | Setting | Dogani | Ours |
+  |---|---|---|
+  | Hidden units | 64 in Table 2, 32 in Section 7.1 | 64 (3.3) |
+  | Recurrent layers | 1 | 1 |
+  | BiGRU merge mode | not stated | sum |
+  | Input window W | not stated | 30 minutes (3.2) |
+  | Features, outputs | 5 features, next 5 minutes | the same |
+  | Split | 60 / 20 / 20 | the same, in time order per node |
+  | Normalization | [0, 1] in Eq. 8, [-1, 1] in Section 6.2 | [0, 1] per node, fitted on the training part (3.4) |
+  | Loss | MAE | MAE |
+  | Optimizer | Adam | Adam |
+  | Learning rate | not stated | 0.001 |
+  | Batch size | 60 | 60 |
+  | Dropout | 0.3 | 0.3 |
+  | Epochs | 64 | at most 64 central epochs or 100 FedAvg rounds |
+  | Early stopping, patience | not stated | patience 10 on the validation MAE (3.8) |
+  | FedAvg rounds | not stated | 19 (best round 9) |
+  | Local epochs per round | not stated | 1 |
+  | Clients per round | a random subset, size not stated | all 16 |
+  | Seeds, repeats | not stated | one seed per model |
+
+- **Experiments:** `scripts/predictor_experiments.py` trains one model with one changed setting and keeps the step 3 results. We ran FedAvg-BiGRU with seeds 1 and 2 and with 32 units: 33 minutes on the RTX 4060. The results are in finding 4.22.
+- **Results:** `scripts/predictor_gap.py` writes `results/predictor_gap/report.md`. The experiments are in `results/predictor_gap/experiments.csv`.
+
 ## Step 4A: autoscaler simulation
 
 ### 4A.1 A simulation, not Kubernetes
@@ -538,3 +569,39 @@ The code and results are in this repository:
   - The example of finding 4.15 is gone. Over the four windows, εn now ranks the scalers the same way users do.
 - **Users:** over the four windows the planner lost 2 requests and KHPA 6,534, against 15,091 before. The planner runs 17% more workers on average: 10.08 against 8.65.
 - **Results:** `results/autoscaler_live/windows_report.md`, section "KHPA before and after the CPU read fix".
+
+### 4.19 MAPE comes from the quiet minutes
+
+- **We found:** 31% of the test minutes have less than a quarter of their node's mean traffic. There FedAvg-BiGRU's MAPE at t+3 is 36.2%. In all busier minutes it is 3.2% to 5.3%. The quiet minutes make up about 11 of the 13.96 points.
+- **Against a naive forecast:** repeating the last input minute gives a MAPE of 13.13 at t+3. That beats both BiGRUs (13.96 and 13.23). The LSTMs reach 12.68 and 11.95. On MAE the models are clearly better: 506 against 562 requests per minute at t+3.
+- **Why:** the models learn with MAE on values scaled to [0, 1] by the node's training maximum, 189,000 to 229,000 requests. A quiet minute with 500 requests is then about 0.003. An error that is tiny in that loss is large relative to 500. The loss hardly sees these minutes, but MAPE weights them as much as any other.
+- **Consequence:** our MAPE says more about the quiet minutes than about the busy ones that matter for scaling. The order of the models by MAPE also changes from step to step (finding 4.22).
+
+### 4.20 Dogani's MAPE may not be in real requests
+
+- **Dogani:** gives MAPE as Eq. 13 but does not say whether it is computed on real requests or on the scaled values.
+- **We found:** the same FedAvg-BiGRU forecasts give a MAPE at t+3 of 13.96 on real requests, 14.40 on values scaled to [0, 1] and 4.13 on values scaled to [-1, 1]. With [-1, 1], quiet minutes sit near -1, far from 0, so their relative errors shrink. Section 6.2 says the data was scaled to [-1, 1] (entry 3.4).
+- **Consequence:** depending on the units, the same forecasts score from 4 to 14. Dogani's 9.04 lies in between, so his MAPE cannot be compared with ours one to one. His MAE of 166.8 also points to traffic far smaller than ours (finding 4.5).
+
+### 4.21 Our test data is burstier than the real trace
+
+- **We found:** the synthetic traces keep the real distribution over all 87 days: the CV is 1.78 for both. But the test parts differ, because the tournament trend is lost (entry 2.6). Over the same minutes, the real trace has a CV of 1.05 and a peak/mean of 10.0. The 16 test parts have a CV of 1.18 to 2.71 and a peak/mean of 12.5 to 58.2. Over all 87 days the synthetic traces also change more from one minute to the next: lag-1 ACF 0.9935 against 0.9990.
+- **Effect:** the naive forecast has a MAPE at t+3 of 11.31 on the real trace's test minutes and 13.13 on our 16 test parts pooled. Per node it ranges from 3.6 to 26.5, and each node's model MAPE follows its naive MAPE.
+- **Consequence:** the data explains about 2 of the 4.9 points between our 13.96 and Dogani's 9.04. Even on the real trace, the naive forecast reaches only 11.31. Dogani's traces are other synthetic traces whose test parts we do not have, so the rest cannot be pinned down.
+- **Also:** `results/autoscaler/pods_node_00.png` shows up to about 500 pods. It is correct and current, from the same run as `table11.md`. A mean demand of 15 pods at 100% use is 21.9 pods at 70%, and node 0's busiest test minute needs 529 pods, 24 times its mean.
+
+### 4.22 Seed noise is as large as the step pattern
+
+- **We ran:** FedAvg-BiGRU again with seeds 1 and 2, and with 32 units (seed 0), all other settings as in step 3.
+
+  | Run | MAPE t+3 | MAPE t+4 | MAPE t+5 | MAE t+3 |
+  |---|---|---|---|---|
+  | Seed 0 (step 3) | 13.96 | 14.41 | 12.82 | 506.4 |
+  | Seed 1 | 13.37 | 13.73 | 13.40 | 499.1 |
+  | Seed 2 | 12.73 | 12.87 | 14.61 | 503.2 |
+  | 32 units, seed 0 | 12.52 | 12.36 | 12.91 | 507.8 |
+
+- **Seeds:** at t+3 the three seeds range from 12.73 to 13.96, mean 13.35. At t+5 they range from 12.82 to 14.61. MAE changes by at most 1.5%. Seeds 1 and 2 have no better t+5 than t+3, so that pattern of seed 0 is noise in the quiet minutes (finding 4.19), not an error.
+- **32 units:** 12.52 at t+3 is 0.2 points below the lowest seed, with a slightly higher MAE. With one run, this is no clear effect. Section 7.1's 32 units would not close the gap.
+- **Consequence:** a single MAPE value of ours is uncertain by about ±1 point. Our gap to Dogani at t+3 is still about 4 points (13.35 against 9.04 for the seed mean).
+

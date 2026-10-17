@@ -6,6 +6,8 @@ Tests for predictors/ (FedAvg and central workload predictors). Run all tests wi
 1. Features: day of week, hour, minute and holiday are right for known minutes.
 2. Windows never cross a split border, each target is the next 5 minutes, and
    real values come back as exact whole requests (zeros included, for MAPE).
+   Through predict() and the Table 8 evaluation, t+3 is exactly 3 minutes
+   after the last input minute, and the central models' pooled windows match.
 3. The min-max scaler is fitted on the training part only.
 4. The server averages weights by number of training windows.
 5. The Diebold-Mariano test: 0 for equal errors, clearly positive when a is worse.
@@ -21,6 +23,8 @@ import torch
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+import train_predictors  # noqa: E402
 from predictors import data, evaluate, federated, models, training  # noqa: E402
 
 
@@ -66,6 +70,34 @@ class Windows(unittest.TestCase):
         real = lambda v: self.node.scaler.unscale_requests(v.numpy())    # minute i has i requests
         np.testing.assert_allclose(real(x[0, :, 0]), np.arange(100, 130), atol=1e-3)
         np.testing.assert_allclose(real(y[0]), np.arange(130, 135), atol=1e-3)
+
+    def test_t3_is_three_minutes_after_the_last_input(self):
+        # Minute i has i requests, so the right forecast for t+h is "last input + h".
+        # A fake model that predicts exactly that goes through predict() and the
+        # report's own evaluation (column step - 1): its error must be 0 at t+3,
+        # t+4 and t+5. Shifted by one minute, it must be off by exactly 1 request.
+        delta = 1 / self.node.scaler.span[0]                       # 1 request in scaled units
+
+        class Ahead(torch.nn.Module):
+            def __init__(self, shift):
+                super().__init__()
+                self.shift = shift
+
+            def forward(self, x):
+                return x[:, -1, :1] + (torch.arange(1, data.HORIZON + 1) + self.shift) * delta
+
+        for shift, error in ((0, 0.0), (-1, 1.0)):
+            _, pooled, _, _ = train_predictors.evaluate_all({"FedAvg-BiGRU": Ahead(shift)}, [self.node])
+            self.assertEqual([r["step"] for r in pooled], ["t+3", "t+4", "t+5"])
+            for row in pooled:
+                self.assertAlmostEqual(row["mae"], error, places=2)
+
+    def test_pooled_targets_match_the_node(self):
+        # The central models train on PooledData: same inputs and targets as the node's own windows
+        x1, y1 = next(self.node.batches("train", 50, shuffle=False))
+        x2, y2 = next(data.PooledData([self.node]).batches("train", 50, shuffle=False))
+        torch.testing.assert_close(x1, x2)
+        torch.testing.assert_close(y1, y2)
 
     def test_real_values_come_back_exact(self):
         # Requests i % 7 in a fresh trace: the test part has many minutes with 0 requests.

@@ -4,6 +4,7 @@ This folder holds the reports, tables, plots and CSVs of every step. Each report
 
 - `predictors/`: step 3, the predictors compared like Dogani's Table 8 (`table8.md`).
 - `predictors_patience5/`: step 3 with early-stopping patience 5, kept for decision 3.8.
+- `predictor_gap/`: step 3, checks and small experiments on the gap to Dogani's MAPE (decision 3.11, findings 4.19 to 4.22).
 - `autoscaler/`: step 4A, the main simulation, like Dogani's Table 11 (`table11.md`).
 - `autoscaler_fair/`: step 4A with the same Pods_min for KHPA and the planner, 1 or 5.
 - `autoscaler_sensitivity/`: step 4A, the grid of traffic level, threshold and KHPA's Pods_min (`sensitivity.md`).

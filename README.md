@@ -129,10 +129,10 @@ The entries are numbered by step. The part before the dot names the step, and th
 
 - **1.1 to 1.4:** the FIFA trace.
 - **2.1 to 2.6:** the synthetic node traces.
-- **3.1 to 3.10:** the predictors.
+- **3.1 to 3.11:** the predictors, and the checks on the MAPE gap to Dogani.
 - **4A.1 to 4A.10:** the simulation, the settings of Table 3 and how we read Algorithm 3.
 - **4B.1 to 4B.14:** the live demo: the worker, the calibration, the windows and the fixed KHPA CPU read.
-- **Findings 4.1 to 4.18:** a section of their own at the end. These are results that differ from Dogani, or that the paper does not report.
+- **Findings 4.1 to 4.22:** a section of their own at the end. These are results that differ from Dogani, or that the paper does not report.
 
 ---
 
