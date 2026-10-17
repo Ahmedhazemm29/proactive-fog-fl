@@ -2,7 +2,7 @@
 
 Bachelor thesis by Ahmed Hazem, German International University (GIU), Cairo.
 
-Supervisors: Dr. Yasmine Zaghloul (first), Prof. Dr.-Ing. Ansgar Meroth (second).
+Supervisors: Dr. Yasmine Zaghloul, Prof. Dr.-Ing. Ansgar Meroth.
 
 This repository reproduces Dogani & Khunjush (2024), "Proactive auto-scaling technique for web applications in container-based edge computing using federated learning model" (JPDC 187, 104837).
 A FedAvg-BiGRU model forecasts each edge node's traffic, and a planner adds or removes containers before the load arrives.
