@@ -1,0 +1,16 @@
+# scripts
+
+This folder holds one command-line script per task. Run them from the repo root with `.venv/bin/python scripts/<name>.py`. Each script explains its options at the top of the file. The main README gives the order and the run times.
+
+- `fifa_workload.py`, `plot_fifa_workload.py`: step 1, the FIFA requests per minute and their plot.
+- `synthetic_traces.py`: step 2, the 16 synthetic node traces.
+- `train_predictors.py`: step 3, trains and compares the predictors.
+- `simulate_autoscaler.py`: step 4A, the simulation of the three scalers.
+- `autoscaler_sensitivity.py`: step 4A, the sensitivity grid.
+- `live_calibrate.py`: step 4B, the requests one worker handles at 70% CPU.
+- `live_windows.py`: step 4B, picks the extra windows by a fixed rule.
+- `live_prepare.py`: step 4B, writes one window and its forecasts.
+- `live_run.py`: step 4B, one live run of one scaler.
+- `live_report.py`, `live_windows_report.py`: step 4B, the report of one window and of all windows.
+- `run_experiments.py`, `set_load.py`, `control_page.py`: earlier part, the controller runs and the load of the two workers.
+- `requirements.txt`: the Python packages of steps 1 to 4A.
