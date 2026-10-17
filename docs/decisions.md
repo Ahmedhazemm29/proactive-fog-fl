@@ -360,6 +360,18 @@ The code and results are in this repository:
 - **Runs:** `live_run.py` already had `--window-dir`, `--out-dir` and `--data-dir`. One batch ran the 9 runs one after another, with 30 s between runs, on 16 October 2026 from 08:24 to 13:05. Each run rebuilds the cluster from scratch. A failed run would be retried once and then skipped. All 9 runs worked on the first try and left no container behind.
 - **Check first:** a 1-minute KHPA run on the rise window, steps 88 to 90, tested the new folders, the Prometheus query and the cleanup before the long runs.
 
+### 4B.14 KHPA's CPU read: wait for a fresh scrape
+
+- **Bug:** KHPA asked Prometheus for `sum(rate(...[15s]))` right at each step start. Prometheus scrapes cAdvisor every 5 s, and the newest scrape was often not stored yet. The 15 s window then held 2 samples instead of 3, and rate() read too low. How often that happened depended on the offset between the 10 s step clock and the 5 s scrape clock, which stays the same for a whole run. On the rise window KHPA saw only 82% of the real CPU (finding 4.17). Its other runs saw 98% to 100%.
+- **Fix:** `fresh_cpu()` in `autoscaler/live.py`.
+  1. After the step start, KHPA waits until Prometheus has stored a cAdvisor scrape that is newer than the step start. It asks for the time of the newest scrape with `timestamp(up{job="cadvisor"})`.
+  2. KHPA evaluates its query at that scrape's own time. The window then always holds that scrape and the two before it. cAdvisor stamps its samples 0.15 to 1.9 s before the scrape, so no fourth sample slips in.
+  3. Step 0 starts 0.5 s before a scrape. A step is 10 s and the scrape interval 5 s, so every step start is followed by a scrape 0.5 s later. The wait is then about 0.6 s in every run, and not anywhere from 0 to 5 s depending on chance.
+- **Unchanged:** the KHPA rule. It still wants ceil(CPU / 0.35) workers, at least 1, with the same cooldowns. The query and its 15 s window are also the same. Only when the query is evaluated changed. KHPA now acts about 0.6 s after the step start instead of right at it.
+- **Other scalers:** no autoscaling and the planner do not use this value. The runner now reads it after their decision, only for the log. Their runs were not repeated.
+- **Check in every report:** `report.md` now gives the share of the real CPU that KHPA saw, against the target of 98% to 100%. The run JSON has it as `prom_share_of_real_cpu`, together with the wait per step and the number of stale reads. The step CSVs have two new columns, `prom_wait_s` and `prom_fresh`.
+- **Rerun:** KHPA ran again on all four windows on 17 October 2026, from 08:19 to 10:24. All 4 runs worked on the first try. KHPA saw 98.6% to 99.1% of the real CPU. Every read was fresh, and the longest wait was 0.74 s. The old KHPA files are kept in a `khpa_old_cpu_read` folder in each window folder, with the old `report.md` and `report.json`.
+
 ## Findings that differ from Dogani
 
 ### 4.1 The FIFA trace is not stationary
@@ -464,6 +476,7 @@ The code and results are in this repository:
 
 ### 4.14 Over four windows, the planner always has fewer shortages
 
+- **Note:** the KHPA numbers here come from the runs with the old CPU read. Finding 4.18 gives them after the fix of 4B.14. The planner still has fewer shortages in every window.
 - **Setup:** the live runs of step 4B on four windows: the first one and the calm, rise and spiky windows of entry 4B.12. Requested workers come from the real CPU.
 - **Dogani:** the planner has the lowest θU and TU (Table 11, p. 17).
 - **We found:** this holds in all four windows.
@@ -482,6 +495,7 @@ The code and results are in this repository:
 
 ### 4.15 εn can rank first the scaler that loses requests
 
+- **Note:** this used KHPA's run with the old CPU read on the rise window. After the fix of 4B.14, the planner has the higher εn there too (finding 4.18). The mechanism below still holds for any scaler that runs too few workers.
 - **Dogani:** the planner has a higher εn than KHPA (Table 11, p. 17).
 - **We found:** with requested workers from CPU, the planner has the higher εn in the original, calm and spiky windows. KHPA has it in the rise window, 6.91 against 4.10. Yet in that window KHPA lost 13,755 requests (0.81%) with a p95 of 494 ms, and the planner lost none.
 - **Why:** Eq. 18 multiplies four ratios against no autoscaling. In the rise window KHPA almost never over-provisioned: θO 0.21 and TO 1.67, against 49.50 and 68.89 without autoscaling. These two ratios, 238 and 41, outweigh KHPA's shortages, which are about twice those of no autoscaling. A scaler that runs too few workers most of the time can win εn this way.
@@ -492,7 +506,7 @@ The code and results are in this repository:
 
 - **Dogani:** both scalers beat no autoscaling, with εn above 1 (Table 11, p. 17).
 - **We found:** in the calm window, with peak/mean 1.04, εn is 0.80 for KHPA and 0.998 for the planner. No run lost a request. The 17 fixed workers, the mean demand, already fit. KHPA's 30 scaling actions only trade shortages for surpluses. The planner added one worker at the start and kept 18.
-- **Why it differs:** Dogani's no autoscaling keeps far more pods than needed (θO 152.07). Ours keeps the window's mean demand, and on flat traffic that is already close to right. In the three windows that move, both scalers beat no autoscaling clearly, with εn 2.59 to 6.91.
+- **Why it differs:** Dogani's no autoscaling keeps far more pods than needed (θO 152.07). Ours keeps the window's mean demand, and on flat traffic that is already close to right. In the three windows that move, both scalers beat no autoscaling clearly, with εn 2.59 to 6.91. After the KHPA fix of 4B.14 that range is 2.65 to 4.53, and KHPA's calm εn is 0.81 (finding 4.18).
 
 ### 4.17 KHPA's Prometheus input read low in one run
 
@@ -501,3 +515,26 @@ The code and results are in this repository:
 - **Timing:** KHPA reads a 15 s rate at each step start, every 10 s, while Prometheus scrapes every 5 s. During the run KHPA got about 10% less than the same query gives when evaluated afterwards, so the newest scrape was often not stored yet. The rest of the gap comes from how rate() extrapolates in such a short window. The step clock and the scrape clock keep the same offset for a whole run, so one run can read low throughout while others do not. The planner run on the same window read 99.7%.
 - **Effect:** in that run KHPA asked for about 18% fewer workers than its own rule would with the real CPU. At the rise it ran 8 workers. Part of its 13,755 lost requests therefore comes from the measurement, not from the KHPA rule.
 - **Not changed:** the runs kept the step 4B setup. Reading KHPA's CPU from the cgroup files, or querying a longer window a moment after the step start, would remove this effect in later runs. `windows_report.md` lists this check for every window.
+- **Update:** fixed in 4B.14. KHPA now waits for a fresh scrape, and the reruns saw 98.6% to 99.1% of the real CPU.
+
+### 4.18 KHPA after the CPU read fix
+
+- **Setup:** KHPA again on all four windows, with the fixed read of 4B.14. No autoscaling and the planner keep their runs. Requested workers come from the real CPU.
+- **We found:**
+
+  | Window | θU old / new | TU old / new | Failed requests old / new | εn old / new | CPU seen old / new |
+  |---|---|---|---|---|---|
+  | Original | 4.79 / 4.93 | 31.11 / 31.11 | 0 / 1 | 2.59 / 2.65 | 98.0% / 98.6% |
+  | Calm | 1.38 / 2.58 | 23.89 / 42.22 | 0 / 0 | 0.80 / 0.81 | 99.8% / 99.1% |
+  | Rise | 14.78 / 3.05 | 59.44 / 15.56 | 13,755 / 3,050 | 6.91 / 3.91 | 81.7% / 98.8% |
+  | Spiky | 2.77 / 3.42 | 13.33 / 15.00 | 1,336 / 3,483 | 3.35 / 2.97 | 99.3% / 98.6% |
+
+- **Rise:** this is where the fix matters. With the full CPU, KHPA ran 11 workers at the jump instead of 8. It lost 3,050 requests instead of 13,755, and its p95 fell from 494 ms to 5.0 ms. Its εn fell from 6.91 to 3.91, because it now over-provisions sometimes, like a working scaler does.
+- **The other windows:** the old reads were already 98% to 100%, so the changes there are run-to-run noise. On the spiky window KHPA ran 10 workers at the one-minute spike instead of 11, and lost 3,483 requests instead of 1,336.
+- **Dogani's claims, again:**
+  - The planner now has the higher εn in all four windows: 3.93, 1.00, 4.10 and 4.53 against KHPA's 2.65, 0.81, 3.91 and 2.97.
+  - The planner still has fewer shortages, scales less often and over-provisions more in every window.
+  - Only "both scalers beat no autoscaling" still fails, on the calm window (finding 4.16).
+  - The example of finding 4.15 is gone. Over the four windows, εn now ranks the scalers the same way users do.
+- **Users:** over the four windows the planner lost 2 requests and KHPA 6,534, against 15,091 before. The planner runs 17% more workers on average: 10.08 against 8.65.
+- **Results:** `results/autoscaler_live/windows_report.md`, section "KHPA before and after the CPU read fix".

@@ -6,9 +6,11 @@ A step is one trace minute, replayed in 10 s. The rules are those of step 4A
 - Stepper is scalers.run() for one step: same cooldowns, plus a cap (20 workers).
 - KHPA decides from the real CPU of the last step, like Kubernetes' HPA with
   CPU request = limit: pods = ceil(total CPU / (0.5 x 0.7)), at least Pods_min.
+  fresh_cpu() makes sure that CPU value is complete (docs/decisions.md, 4B.14).
 - The planner is scalers.planner_step() unchanged, on the scaled forecasts.
 """
 import math
+import time
 
 import numpy as np
 
@@ -34,6 +36,41 @@ class Stepper:
                 self.free_from = t + self.cdt_down
             self.pods = wanted
         return self.pods
+
+
+def fresh_cpu(last_scrape, cpu_at, step_start, timeout=8.0, poll=0.1, clock=time.time, sleep=time.sleep):
+    """
+    KHPA's CPU at the start of a step, from a complete rate window.
+
+    Prometheus scrapes cAdvisor every 5 s. Asked right at the step start, the
+    newest scrape is often not stored yet, and rate() over 15 s then sees 2
+    samples instead of 3 and reads too low. So:
+    1. wait until Prometheus has stored a scrape from after step_start
+       (last_scrape() gives the newest scrape time), at most `timeout` seconds;
+    2. evaluate the query at that scrape's own time (cpu_at(time)), so the
+       window holds that scrape and the two before it.
+    Returns (cpu, scrape time, seconds waited, fresh). fresh is False when the
+    timeout passed first; the value then comes from the newest stored scrape.
+    """
+    began = clock()
+    while True:
+        scrape = last_scrape()
+        if scrape >= step_start or clock() - began >= timeout:
+            break
+        sleep(poll)
+    return cpu_at(scrape), scrape, clock() - began, scrape >= step_start
+
+
+def cpu_share(prom, real):
+    """
+    Share of the real CPU that the Prometheus readings saw over a run (1.0 = all).
+    prom[k] is read at the start of step k and real[k] is the cgroup CPU of
+    step k, so prom[k] is compared with real[k - 1]. Steps where Prometheus
+    did not answer (nan) are left out.
+    """
+    prom, real = np.asarray(prom, dtype=float)[1:], np.asarray(real, dtype=float)[:-1]
+    ok = np.isfinite(prom)
+    return float(prom[ok].sum() / real[ok].sum())
 
 
 def pods_for_cpu(cpu_cores, cpu_limit, threshold):

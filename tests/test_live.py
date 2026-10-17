@@ -149,6 +149,32 @@ class Scalers(unittest.TestCase):
         used = live.cpu_per_step(before, after, 10.0)
         self.assertEqual(used, {1: (0.5, 0.1), 2: (0.2, 0.0), 3: (0.1, 0.0)})
 
+    def test_fresh_cpu_waits_for_a_scrape_after_the_step_start(self):
+        # Scrapes are stored at 98, 103, 108 s (fake clock). The step starts at 100 s, the newest
+        # stored scrape is 98 s until the clock passes 103.4 s (storing takes 0.4 s).
+        now = [100.0]
+        stored = lambda: max(t for t in (98.0, 103.0, 108.0) if t + 0.4 <= now[0])  # noqa: E731
+        asked = []
+        cpu, scrape, waited, fresh = live.fresh_cpu(
+            stored, lambda at: asked.append(at) or 3.0, 100.0, clock=lambda: now[0],
+            sleep=lambda s: now.__setitem__(0, now[0] + s))
+        self.assertEqual((cpu, scrape, fresh), (3.0, 103.0, True))
+        self.assertEqual(asked, [103.0])                  # evaluated at the scrape's own time
+        self.assertTrue(3.4 - 1e-9 <= waited <= 3.5 + 1e-9)    # within one poll of 0.1 s
+
+    def test_fresh_cpu_gives_up_after_the_timeout(self):
+        now = [100.0]
+        cpu, scrape, waited, fresh = live.fresh_cpu(
+            lambda: 98.0, lambda at: 2.0, 100.0, timeout=2.0, clock=lambda: now[0],
+            sleep=lambda s: now.__setitem__(0, now[0] + s))
+        self.assertEqual((cpu, scrape, fresh), (2.0, 98.0, False))
+        self.assertGreaterEqual(waited, 2.0)
+
+    def test_cpu_share(self):
+        # prom[k] is read at the start of step k, so it is compared with the real CPU of step k - 1
+        self.assertAlmostEqual(live.cpu_share([9.0, 2.0, 4.0, float("nan")], [2.0, 4.0, 6.0, 8.0]), 1.0)
+        self.assertAlmostEqual(live.cpu_share([0.0, 1.6, 3.2], [2.0, 4.0, 6.0]), 0.8)
+
     def test_settings_of_the_three_scalers(self):
         # The planner gets the calibrated 1650 requests per step and worker, exactly
         self.assertEqual(S.capacity, 1650)

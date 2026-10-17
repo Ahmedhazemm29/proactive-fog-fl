@@ -31,6 +31,7 @@ import numpy as np
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
+from autoscaler.live import cpu_share  # noqa: E402
 from autoscaler.metrics import METRICS, elastic_speedup, elasticity  # noqa: E402
 from autoscaler.scalers import khpa, no_autoscaling, planner, requested_pods  # noqa: E402
 import live_run  # noqa: E402
@@ -191,6 +192,15 @@ def main():
                      f"The generator queued 99% of the requests within {r['queue_delay_p99_ms']:.1f} ms of their "
                      f"planned time (max {r['queue_delay_max_ms']:.0f} ms). Prometheus did not answer in "
                      f"{r['prom_missing']} steps. Highest 1-minute load average {r['load1_max']:.1f} (16 threads).")
+    # Check of the CPU that Prometheus gave at each step start, against the cgroup CPU (decision 4B.14)
+    shares = {n: cpu_share(steps[n]["prom_cpu"], steps[n]["cpu_total"]) for n in names}
+    if "khpa" in names:
+        inside = "inside" if 0.98 <= shares["khpa"] <= 1.0 + 1e-9 else "outside"
+        notes.append(f"- **KHPA, CPU seen:** at its decisions KHPA saw {100 * shares['khpa']:.1f}% of the real CPU "
+                     f"from the cgroup files, {inside} the target of 98% to 100%.")
+    for n in [n for n in names if n != "khpa"]:
+        notes.append(f"- **{SCALERS[n]}, CPU seen by Prometheus:** {100 * shares[n]:.1f}% of the real CPU. "
+                     "Logged only, this scaler does not use it.")
 
     lines = [
         "# Live autoscaler demo (step 4B)",
@@ -251,7 +261,7 @@ def main():
         f.write("\n".join(lines) + "\n")
     with open(os.path.join(args.dir, f"report{suffix}.json"), "w") as f:
         json.dump(json_safe({"live_requested_from_cpu": live_cpu, "live_requested_from_traffic": live_traffic,
-                             "simulation": sim, "runs": runs, "window": info,
+                             "simulation": sim, "runs": runs, "window": info, "prom_share_of_real_cpu": shares,
                              "calibration_workload_pod": calibration["workload_pod"]}), f, indent=2)
     print(f"Saved {os.path.join(args.dir, f'report{suffix}.md')}")
 

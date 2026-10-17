@@ -16,7 +16,7 @@ Requested workers of a step = ceil(CPU used by all workers / 0.35), at least 1.
 | Scaler | θU | θO | TU | TO | εn | #Up | #Down | Mean workers | Failed requests | p95 (ms) |
 |---|---|---|---|---|---|---|---|---|---|---|
 | No autoscaling | 7.63 | 28.80 | 26.67 | 66.11 | 1.00 | 0 | 0 | 8.00 | 124,471 (5.17%) | 1092.7 |
-| KHPA | 4.79 | 3.26 | 31.11 | 17.78 | 2.59 | 17 | 16 | 7.56 | 0 (0.00%) | 4.6 |
+| KHPA | 4.93 | 2.97 | 31.11 | 17.22 | 2.65 | 15 | 19 | 7.43 | 1 (0.00%) | 4.8 |
 | Planner (FedAvg-BiGRU) | 0.27 | 24.62 | 2.78 | 87.78 | 3.93 | 11 | 12 | 9.25 | 0 (0.00%) | 4.6 |
 
 ## Live, requested workers from the traffic
@@ -26,7 +26,7 @@ Requested workers of a step = ceil(requests / 1,650), the same in every run.
 | Scaler | θU | θO | TU | TO | εn | #Up | #Down | Mean workers | Failed requests | p95 (ms) |
 |---|---|---|---|---|---|---|---|---|---|---|
 | No autoscaling | 11.28 | 17.14 | 34.44 | 51.11 | 1.00 | 0 | 0 | 8.00 | 124,471 (5.17%) | 1092.7 |
-| KHPA | 13.77 | 0.81 | 76.11 | 3.89 | 3.19 | 17 | 16 | 7.56 | 0 (0.00%) | 4.6 |
+| KHPA | 14.01 | 0.52 | 78.33 | 4.44 | 3.40 | 15 | 19 | 7.43 | 1 (0.00%) | 4.8 |
 | Planner (FedAvg-BiGRU) | 1.28 | 11.50 | 12.22 | 62.78 | 2.34 | 11 | 12 | 9.25 | 0 (0.00%) | 4.6 |
 
 ## Step 4A simulation of the same steps
@@ -42,13 +42,16 @@ scalers.py with the same settings and requested workers from the traffic. KHPA r
 ## Checks
 
 - **Planner, live against simulated:** the worker counts differ in 0 of 180 steps. The planner only reads the forecasts, so they should be equal.
-- **KHPA, live against simulated:** the worker counts differ in 142 of 180 steps. Live KHPA reads CPU from Prometheus, the simulated one reads the traffic.
+- **KHPA, live against simulated:** the worker counts differ in 144 of 180 steps. Live KHPA reads CPU from Prometheus, the simulated one reads the traffic.
 - **No autoscaling, requested from CPU minus from traffic:** mean -1.17 workers, from -6 to +1.
-- **KHPA, requested from CPU minus from traffic:** mean -0.89 workers, from -2 to +1.
+- **KHPA, requested from CPU minus from traffic:** mean -0.92 workers, from -2 to +1.
 - **Planner (FedAvg-BiGRU), requested from CPU minus from traffic:** mean -0.88 workers, from -2 to +1.
 - **No autoscaling, run:** 2,409,162 requests, 30.6 min. The generator queued 99% of the requests within 1.1 ms of their planned time (max 62 ms). Prometheus did not answer in 0 steps. Highest 1-minute load average 7.9 (16 threads).
-- **KHPA, run:** 2,409,162 requests, 30.6 min. The generator queued 99% of the requests within 1.1 ms of their planned time (max 21 ms). Prometheus did not answer in 0 steps. Highest 1-minute load average 8.8 (16 threads).
+- **KHPA, run:** 2,409,162 requests, 30.6 min. The generator queued 99% of the requests within 1.1 ms of their planned time (max 40 ms). Prometheus did not answer in 0 steps. Highest 1-minute load average 6.9 (16 threads).
 - **Planner (FedAvg-BiGRU), run:** 2,409,162 requests, 30.6 min. The generator queued 99% of the requests within 1.1 ms of their planned time (max 21 ms). Prometheus did not answer in 0 steps. Highest 1-minute load average 7.2 (16 threads).
+- **KHPA, CPU seen:** at its decisions KHPA saw 98.6% of the real CPU from the cgroup files, inside the target of 98% to 100%.
+- **No autoscaling, CPU seen by Prometheus:** 95.3% of the real CPU. Logged only, this scaler does not use it.
+- **Planner (FedAvg-BiGRU), CPU seen by Prometheus:** 99.7% of the real CPU. Logged only, this scaler does not use it.
 
 ## Dogani, Table 11 (p. 17)
 

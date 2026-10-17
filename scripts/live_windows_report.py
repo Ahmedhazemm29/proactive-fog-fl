@@ -26,6 +26,7 @@ import numpy as np
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
+from autoscaler.live import cpu_share  # noqa: E402
 from autoscaler.metrics import METRICS  # noqa: E402
 from live_report import SCALERS, read_steps, simulate  # noqa: E402
 from live_run import read_window  # noqa: E402
@@ -259,7 +260,7 @@ def answers(results):
     lost = {name: sum(r["rows"][name]["failed"] for r in results.values() if name in r["rows"]) for name in SCALERS}
     lines += ["", f"Not in Table 11, but what users notice: over the {len(results)} windows the planner lost "
                   f"{lost['planner']:,} requests, KHPA {lost['khpa']:,} and no autoscaling {lost['none']:,}. "
-                  "The reasons behind these answers are in `docs/decisions.md`, findings 4.14 to 4.17."]
+                  "The reasons behind these answers are in `docs/decisions.md`, findings 4.14 to 4.18."]
     return lines, winners, traffic_winners
 
 
@@ -275,9 +276,7 @@ def check_table(results):
     for w, r in results.items():
         khpa, planner = "–", "–"
         if "khpa" in r["steps"]:
-            prom, real = r["steps"]["khpa"]["prom_cpu"][1:], r["steps"]["khpa"]["cpu_total"][:-1]
-            ok = np.isfinite(prom)
-            checked[w] = float(prom[ok].sum() / real[ok].sum())
+            checked[w] = cpu_share(r["steps"]["khpa"]["prom_cpu"], r["steps"]["khpa"]["cpu_total"])
             khpa = f"{checked[w]:.2f}"
         if "planner" in r["steps"]:
             run = r["runs"]["planner"]
@@ -288,6 +287,31 @@ def check_table(results):
         load = max(run["load1_max"] for run in r["runs"].values())
         lines.append(f"| {w} | {khpa} | {planner} | {delay:.1f} | {load:.1f} |")
     return lines, checked
+
+
+OLD = "khpa_old_cpu_read"     # the KHPA runs with the CPU read of before decision 4B.14
+
+
+def before_after(results):
+    """KHPA with the old CPU read (folder khpa_old_cpu_read) next to the rerun with the fixed read."""
+    lines = ["| Window | θU old / new | TU old / new | Failed requests old / new | εn old / new "
+             "| CPU seen old / new |", "|---|---|---|---|---|---|"]
+    out = {}
+    for w, r in results.items():
+        folder = os.path.join(r["folder"], OLD)
+        if "khpa" not in r["rows"] or not os.path.exists(os.path.join(folder, "report.json")):
+            continue
+        old_report = json.load(open(os.path.join(folder, "report.json")))
+        old = old_report["live_requested_from_cpu"]["khpa"] | {"failed": old_report["runs"]["khpa"]["failed"]}
+        old_steps = read_steps(os.path.join(folder, "steps_khpa.csv"))
+        old["share"] = cpu_share(old_steps["prom_cpu"], old_steps["cpu_total"])
+        new = r["rows"]["khpa"] | {"share": cpu_share(r["steps"]["khpa"]["prom_cpu"], r["steps"]["khpa"]["cpu_total"])}
+        out[w] = {"old": old, "new": new}
+        lines.append(f"| {w} | {number(old['theta_u'])} / {number(new['theta_u'])} "
+                     f"| {number(old['t_u'])} / {number(new['t_u'])} | {old['failed']:,} / {new['failed']:,} "
+                     f"| {number(as_float(old['speedup']))} / {number(new['speedup'])} "
+                     f"| {100 * old['share']:.1f}% / {100 * new['share']:.1f}% |")
+    return lines, out
 
 
 def plot(path, results, workload_pod):
@@ -348,6 +372,7 @@ def main():
     stats = summary(results)
     answer_lines, winners, traffic_winners = answers(results)
     checks, khpa_input = check_table(results)
+    fix_lines, fix = before_after(results)
     plot(os.path.join(out_dir, "windows_workers.png"), results, calibration["workload_pod"])
 
     missing = [f"{w} {SCALERS[name]}" for w, r in results.items() for name in SCALERS if name not in r["rows"]]
@@ -402,11 +427,20 @@ def main():
         "each scaler ran. Each window folder also has `report.md` and one `plot_<scaler>.png` per run, with the "
         "requested workers and the p95 response time.",
         "",
+        *(["## KHPA before and after the CPU read fix",
+           "",
+           "KHPA first read the CPU right at each step start, often before Prometheus had stored the newest "
+           "scrape, so it could see too little CPU. The fixed read waits for that scrape (decision 4B.14). "
+           "KHPA was then run again on all four windows. The tables above use the new runs. The old runs are in "
+           f"each window's `{OLD}` folder. εn of both compares with the same no-autoscaling run.",
+           "",
+           *fix_lines,
+           ""] if fix_lines[2:] else []),
         "## Checks",
         "",
-        "- **KHPA's input:** at each step start KHPA reads the 15 s CPU rate from Prometheus. The table divides "
+        "- **KHPA's input:** KHPA reads the 15 s CPU rate from Prometheus at each step start. The table divides "
         "its sum over the run by the real CPU from the cgroup files, for the step that had just ended. "
-        "1.00 means KHPA saw the real CPU.",
+        "1.00 means KHPA saw the real CPU. The target is 0.98 to 1.00.",
         "- **Planner:** it only reads the forecasts, so it must run the same workers as the step 4A simulation.",
         "- **Generator and laptop:** the worst p99 delay of the load generator against the planned send times, "
         "and the highest 1-minute load average of the window's runs, on 16 threads.",
@@ -420,7 +454,8 @@ def main():
                                              "speedup_from_traffic": r["traffic_speedup"]} for w, r in results.items()},
                              "summary": stats, "speedup_winner": winners,
                              "speedup_winner_from_traffic": traffic_winners,
-                             "khpa_prometheus_over_real_cpu": khpa_input}), f, indent=2)
+                             "khpa_prometheus_over_real_cpu": khpa_input,
+                             "khpa_before_after_cpu_read_fix": fix}), f, indent=2)
     print(f"Saved {os.path.join(out_dir, 'windows_report.md')}")
 
 

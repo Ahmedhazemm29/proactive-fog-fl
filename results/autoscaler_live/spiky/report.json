@@ -12,14 +12,14 @@
       "speedup_zero": []
     },
     "khpa": {
-      "theta_u": 2.771026041859375,
-      "theta_o": 5.246913580246913,
-      "t_u": 13.333333333333334,
-      "t_o": 16.666666666666668,
-      "scale_ups": 13,
-      "scale_downs": 10,
-      "mean_workers": 4.416666666666667,
-      "speedup": 3.3517504015293933,
+      "theta_u": 3.4182098765432096,
+      "theta_o": 5.2231641814975145,
+      "t_u": 15.0,
+      "t_o": 19.444444444444443,
+      "scale_ups": 12,
+      "scale_downs": 13,
+      "mean_workers": 4.35,
+      "speedup": 2.974745876228412,
       "speedup_zero": []
     },
     "planner": {
@@ -47,14 +47,14 @@
       "speedup_zero": []
     },
     "khpa": {
-      "theta_u": 12.495990120990122,
-      "theta_o": 1.6424285590952254,
-      "t_u": 51.111111111111114,
-      "t_o": 6.111111111111111,
-      "scale_ups": 13,
-      "scale_downs": 10,
-      "mean_workers": 4.416666666666667,
-      "speedup": 2.643588847557579,
+      "theta_u": 13.113765863765863,
+      "theta_o": 1.443843193843194,
+      "t_u": 49.44444444444444,
+      "t_o": 7.222222222222222,
+      "scale_ups": 12,
+      "scale_downs": 13,
+      "mean_workers": 4.35,
+      "speedup": 2.608603819997078,
       "speedup_zero": []
     },
     "planner": {
@@ -166,24 +166,28 @@
       },
       "capacity": 1650.0,
       "sent": 1334035,
-      "failed": 1336,
-      "rejected": 1300,
-      "timeouts": 36,
+      "failed": 3483,
+      "rejected": 3479,
+      "timeouts": 4,
       "broken": 0,
       "broken_reasons": {},
-      "p50_ms": 2.831857302226126,
-      "p95_ms": 4.803413166155223,
-      "p99_ms": 841.1868161636813,
-      "queue_delay_p99_ms": 1.093654845006995,
-      "queue_delay_max_ms": 41.98465979004595,
-      "send_delay_p99_ms": 1.1184474874244188,
-      "send_delay_max_ms": 42.64983279063017,
-      "scale_ups": 13,
-      "scale_downs": 10,
+      "p50_ms": 2.8493760828496306,
+      "p95_ms": 5.0928306430250805,
+      "p99_ms": 1008.0661913718723,
+      "queue_delay_p99_ms": 1.0936692006214341,
+      "queue_delay_max_ms": 40.59720235363784,
+      "send_delay_p99_ms": 1.1190836356581713,
+      "send_delay_max_ms": 40.95324235458975,
+      "scale_ups": 12,
+      "scale_downs": 13,
       "prom_missing": 0,
-      "load1_max": 5.095703125,
-      "wall_seconds": 1833.3,
-      "failed_pct": 0.10014729748469868
+      "prom_stale": 0,
+      "prom_wait_mean_s": 0.6079825039118365,
+      "prom_wait_max_s": 0.6149454116821289,
+      "load1_max": 4.10205078125,
+      "wall_seconds": 1835.9,
+      "prom_share_of_real_cpu": 0.9864300279295765,
+      "failed_pct": 0.2610876026491059
     },
     "planner": {
       "scaler": "planner",
@@ -241,6 +245,11 @@
     "requested_traffic_max": 18,
     "raw_mean": 56368.8,
     "raw_max": 225892.0
+  },
+  "prom_share_of_real_cpu": {
+    "none": 0.8395091496639647,
+    "khpa": 0.9864317984124584,
+    "planner": 0.9967723789336377
   },
   "calibration_workload_pod": 1650
 }

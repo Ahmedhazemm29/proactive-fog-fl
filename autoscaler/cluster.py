@@ -207,9 +207,24 @@ def cleanup(log=print):
         docker("network", "rm", NETWORK, check=False)
 
 
-def prometheus_cpu(url, window="15s"):
+def prometheus_query(url, query, at=None):
+    """The result of one instant query, evaluated now or at time `at` (Unix seconds)."""
+    params = {"query": query} | ({"time": f"{at:.3f}"} if at is not None else {})
+    with urllib.request.urlopen(f"{url}/api/v1/query?" + urllib.parse.urlencode(params), timeout=2) as r:
+        return json.load(r)["data"]["result"]
+
+
+def prometheus_cpu(url, window="15s", at=None):
     """KHPA's input: total CPU (cores) of the live workers, as Prometheus sees it from cAdvisor."""
     query = f'sum(rate(container_cpu_usage_seconds_total{{name=~"live-worker-.*"}}[{window}]))'
-    with urllib.request.urlopen(f"{url}/api/v1/query?" + urllib.parse.urlencode({"query": query}), timeout=2) as r:
-        data = json.load(r)["data"]["result"]
+    data = prometheus_query(url, query, at)
     return float(data[0]["value"][1]) if data else 0.0
+
+
+SCRAPE_SECONDS = 5.0     # scrape_interval in monitoring/prometheus.yml
+
+
+def last_scrape(url, job="cadvisor"):
+    """Time (Unix seconds) of the newest scrape of cAdvisor that Prometheus has stored."""
+    data = prometheus_query(url, f'timestamp(up{{job="{job}"}})')
+    return float(data[0]["value"][1]) if data else float("-inf")
