@@ -74,8 +74,6 @@ services:
   grafana:
     image: grafana/grafana:11.1.0
     container_name: grafana
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       # The demo dashboards, loaded by provisioning/dashboards/demo.yml. Only these
