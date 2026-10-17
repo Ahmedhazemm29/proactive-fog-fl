@@ -6,3 +6,4 @@ This folder holds the written documents of the repository. Start with `decisions
 - `demo_live.md`: how to run the live demo of step 4B, in about 5 minutes or in full.
 - `demo.md`: earlier part: a 10 to 15 minute demo of the CPU controllers.
 - `concepts.md`: earlier part: plain-language notes on the ideas behind the CPU controllers.
+- `images/`: the Grafana screenshots in the main README: the testbed controllers, and the live planner and KHPA demos.

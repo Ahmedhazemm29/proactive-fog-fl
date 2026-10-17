@@ -30,6 +30,16 @@ Dogani's main claim holds. The planner has fewer shortages and scales less often
 
 *Node 0 on 23 July 1998: real requests per minute and the t+3 forecasts of all four models.*
 
+Grafana during two 5-minute live demos on the same traffic, steps 60 to 86 of the first window ([docs/demo_live.md](docs/demo_live.md)):
+
+![Grafana live dashboard during the planner demo run](docs/images/grafana_live_planner.png)
+
+*Planner: it adds workers before they are needed, so the running workers (orange) never drop below the requested ones (grey dashed), the HAProxy queue stays empty and no request fails.*
+
+![Grafana live dashboard during the KHPA demo run](docs/images/grafana_live_khpa.png)
+
+*KHPA, same traffic: it adds workers only after the CPU has risen, so around 11:26 the workers hit their 0.5 CPU limit and up to 849 requests wait in HAProxy for about 0.5 s, but none fail.*
+
 Our numbers next to Dogani's:
 
 | Result | Dogani | Ours | Full report |
@@ -150,7 +160,8 @@ Before the reproduction, the thesis built a testbed for vertical CPU scaling of 
 ├── docker-compose.yml         # cAdvisor, Prometheus and Grafana, plus the two workers of the earlier part
 ├── docs/                      # the decisions log, the live demo guide and the guides of the earlier part
 │   ├── decisions.md           # every choice and every difference from the paper
-│   └── demo_live.md           # the live demo of step 4B, step by step
+│   ├── demo_live.md           # the live demo of step 4B, step by step
+│   └── images/                # the Grafana screenshots in this README
 ├── scripts/                   # one command-line script per step: build the data, train, simulate, run live, report
 │   └── requirements.txt       # the Python packages of steps 1 to 4A
 ├── predictors/                # step 3: features, models, FedAvg and evaluation
@@ -297,6 +308,10 @@ Grafana runs at http://localhost:3000 and Prometheus at http://localhost:9090.
 ## Earlier Part: Vertical CPU Scaling
 
 Two containers share one CPU while they train a small model. A reactive and a proactive controller change their CPU limits every 5 s. The proactive controller beat the reactive one under every load profile.
+
+![Grafana: CPU demand, use and limit of the two testbed workers with no controller, the proactive one and the reactive one](docs/images/grafana_testbed_controllers.png)
+
+*Sine load for 8 minutes: no controller for the first 2 (limits flat at 0.5), then the proactive controller for 3 (limits swing between 0.1 and 0.9 with the waves), then the reactive one for 3 (late steps of 0.1, between 0.3 and 0.7).*
 
 - **Results:** [results/profiles_summary.md](results/profiles_summary.md).
 - **Demo guide:** [docs/demo.md](docs/demo.md).
