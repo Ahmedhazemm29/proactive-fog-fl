@@ -3,35 +3,300 @@
 
 \section{Architectural Hierarchy, Decentralization and Edge/Fog Computing}
 % TODO: Liu (2020?): Client-Edge-Cloud Hierarchical Federated Learning
-% TODO: Qayyum (2025): DHFL: decentralized hierarchical FL with dynamic global aggregation
-% TODO: Zhao (2022?): Edge resource autoscaling for hierarchical FL over public edge platforms
-% TODO: Prigent (2024): Enabling FL across the computing continuum
-% TODO: Dogani (2024): Proactive auto-scaling with FL (already in the Proactive Autoscaling section below)
+% DRAFT: my summary, reword (Liu (2020)
+{\color{gray}
+Client-Edge-Cloud Hierarchical Federated Learning
 
-\section{Cryptographic Privacy Mechanisms and Secure Aggregation Overhead}
-% TODO: Khan (2025): End-to-end privacy-aware FL for wearable health devices (CKKS, in-network aggregation)
-% TODO: Huang (2025): Fog-driven communication-efficient and privacy-preserving FL (compressed sensing)
-% TODO: Valdez-Solis (2026): Privacy and security for 6G via fog/edge, blockchain and FL (survey)
-% TODO: Niu (2025?): Privacy-preserving and verifiable FL with weighted average aggregation
-% TODO: Dinh (2026): Privacy-preserving hierarchical FL via CKKS homomorphic encryption
+Lumin Liu, Jun Zhang, S.H. Song, Khaled B. Letaief.
+
+Main Problem Statement: Standard cloud-based Federated Learning (FL) relies on a central cloud server, incurring heavy Wide Area Network (WAN) latency and communication overhead, whereas edge-based FL restricts aggregation to local edge servers, limiting client reach and degrading model accuracy due to localized datasets.
+
+Key Methodology \& Frameworks Used: Introduces a three-tier client-edge-cloud architecture governed by the Hierarchical Federated Averaging (HierFAVG) algorithm. Clients run local Stochastic Gradient Descent (SGD), edge servers perform local model aggregations every k1 local updates, and the cloud server executes global aggregations every k2 edge aggregations (i.e., every k1 k2 local steps). Evaluated on MNIST (CNN with 21,840 parameters) and CIFAR-10 (CNN with 5,852,170 parameters) across Edge-IID, Edge-NIID, and Non-IID partitions.
+
+Main Results and Conclusions: HierFAVG significantly accelerates training times while reducing client energy consumption12. On MNIST (Edge-IID), reaching 85\% test accuracy required 385.9 s / 29.4 J in Cloud FL (k1=60, k2=1), whereas HierFAVG (k1=6, k2=10) dropped training time and energy to 97.7 s / 19.0 J12. On CIFAR-10 (Non-IID), reaching 70\% accuracy dropped from 109,800 s (Cloud FL) to 49,350 s (HierFAVG).
+
+Key Limitations: Assumes homogeneous wireless communication channel gains, fixed client transmit power, and identical CPU computing capacities across all participating clients.
+}
+
+% TODO: Qayyum (2025): DHFL: decentralized hierarchical FL with dynamic global aggregation
+% DRAFT: my summary, reword (Qayyum)
+{\color{gray}
+DHFL: Decentralized Hierarchical Federated Learning With Dynamic Global Aggregation for Privacy-Aware Fog Computing
+
+Tariq Qayyum, Zouheir Trabelsi, Asad Waqar Malik, Asadullah Tariq, Irfanud Din.
+
+Main Research Question / Problem Statement: Traditional FL and static Hierarchical FL (HFL) depend on central cloud orchestrators or fixed fog nodes for global parameter aggregation, introducing severe wide-area delays, single points of failure, network bottlenecks, and slow convergence on Non-IID data.
+
+Key Methodology \& Frameworks Used: Proposes the Distributed Hierarchical Federated Learning (DHFL) framework, which eliminates cloud-facing two-way model transfers by shifting global aggregation entirely to the fog layer35. Dynamically selects the optimal fog aggregator using an Enhanced Multi-Criteria Particle Swarm Optimization (MCPSO) algorithm based on Data Quality Index (DQI), contribution score (n), workload, communication cost, and node availability. Validated on a physical DigitalOcean multi-region cloud testbed (Central Cloud in Sydney; 3 Fog regions in New York with 25 clients) across MNIST, CIFAR-10, FashionMNIST, SVHN, and KMNIST datasets.
+
+Main Results and Conclusions: DHFL consistently outperformed baseline HFL by 10–12\% in model accuracy, precision, recall, and F1 score across all image datasets35. Per-round application communication delay dropped from 200–230 seconds in HFL to 10–20 seconds in DHFL, while fog-to-cloud telemetry delay decreased from 90–105 seconds to 1–2 seconds due to transferring float-value heartbeats instead of multi-megabyte model weights35. Average hop count dropped to 5–8 hops.
+
+Key Limitations: Transmitting periodic heartbeat messages (every 5–15 seconds) introduces periodic network overhead; scalability and fault tolerance under high client mobility remain operational challenges.
+}
+
+% TODO: Zhao (2022?): Edge resource autoscaling for hierarchical FL over public edge platforms
+% DRAFT: my summary, reword (Zhao)
+{\color{gray}
+Edge Resource Autoscaling for Hierarchical Federated Learning Over Public Edge Platforms
+
+Mingliao Zhao, Kongyange Zhao, Zhi Zhou, Xu Chen.
+
+Main Research Question / Problem Statement: Commercial public edge operators throttle network bandwidth and charge instance rental costs, making edge server provisioning for time-varying mobile client updates a long-term, time-coupled, NP-hard cost minimization problem under uncertain future system demand.
+
+Key Methodology \& Frameworks Used: Develops AutoEdge, an online edge server autoscaling framework22. Incorporates an Online Regularization-based Algorithm (ORA) that uses relative entropy regularization to decouple time-coupled server switching/booting costs into solvable one-shot convex subproblems, paired with a Randomized Rounding Algorithm (RRA) for integer provisioning. Evaluated via trace-driven simulation using London underground passenger traffic across 20 subway stations.
+
+Main Results and Conclusions: AutoEdge reduced total system cost by 55.21\% compared to Greedy routing and 19.16\% compared to the Online Lazy Switching Algorithm (OLSA)24. ORA achieved an average execution time of 9.2174 seconds per 15-minute slot, while RRA completed in less than 1 second.
+
+Key Limitations: Candidate edge server locations are assumed fixed prior to autoscaling, and unit operational/switching costs are modeled as static parameters.
+}
+
+% TODO: Prigent (2024): Enabling FL across the computing continuum
+% DRAFT: my summary, reword (Prigent)
+{\color{gray}
+Enabling federated learning across the computing continuum: Systems, challenges and future directions
+
+Cédric Prigent, Alexandru Costan, Gabriel Antoniu, Loïc Cudennec.
+
+Main Research Question / Problem Statement: Deploying FL across the heterogeneous, volatile Edge-to-Cloud Computing Continuum (CC) creates critical challenges in statistical heterogeneity (Non-IID client drift), system heterogeneity (diverse compute/memory/network), client volatility, security vulnerabilities, and large-scale MLOps orchestration.
+
+Key Methodology \& Frameworks Used: Comprehensive systematic literature review analyzing 53 primary research studies (2018–2023) and 20 open-source FL software frameworks/benchmarks (e.g., Flower, OpenFL, FATE, IBM FL, LEAF, FedScale)27more\_horiz. Categorizes methodologies across personalized FL, model pruning/quantization, differential privacy, homomorphic encryption, SMPC, and system topologies.
+
+Main Results and Conclusions: Identifies that 73.0\% of surveyed FL studies relied exclusively on simulation platforms, while only 27.0\% conducted experiments on physical distributed testbeds3139. Computer Vision tasks dominated 77.2\% of evaluations3139. Delivers a structured taxonomy mapping privacy trade-offs, algorithmic frameworks, and Federated MLOps tools across the computing continuum.
+
+Key Limitations: Highlights widespread lack of realistic multi-node continuum testbed evaluations, biased metric reporting (evaluating round count rather than energy/resource cost), and unaddressed concept drift.
+}
+
+% TODO: Dogani (2024): see the Proactive Autoscaling section below
+
+\subsection{Privacy-Preserving Mechanisms}
+% TODO: one short paragraph (why privacy matters in fog FL, the main techniques, and that they are out of scope for this thesis).
+% My summaries of the 5 privacy papers, to compress into that paragraph:
+% --- Khan ---
+% End-to-End Privacy-Aware Federated Learning for Wearable Health Devices via Encrypted Aggregation in Programmable Networks
+% Huzaif Khan, Rahul Kavati, Sriven Srilakshmi Pulkaram, Ali Jalooli.
+% Main Research Question / Problem Statement: Wearable healthcare IoT devices generate sensitive, heterogeneous, and class-imbalanced data, but existing In-Network Computing (INC) frameworks operate on plaintext model updates (exposing privacy), while standard Fully Homomorphic Encryption (FHE) introduces prohibitive latency on resource-constrained end-devices.
+% Key Methodology & Frameworks Used: Introduces Edge-Assisted Homomorphic Federated Learning (EAH-FL), integrating Cheon–Kim–Kim–Song (CKKS) approximate homomorphic encryption with switch-level In-Network Computing (INC) model aggregation. Incorporates an Adaptive Multi-Relational Routing Graph Neural Network (AMR-GNN) to determine optimal data forwarding and aggregation paths. Evaluated using the public FitLife Health and Fitness Tracking dataset.
+% Main Results and Conclusions: Establishes an end-to-end encrypted pipeline that processes homomorphically aggregated parameters directly in programmable network devices, achieving steady downward energy consumption per round while maintaining model accuracy without exposing plaintext updates.
+% Key Limitations: Evaluation relies primarily on simulation-based experiments rather than physical healthcare IoT testbed deployments with real-world wireless interference, hardware heterogeneity, and dynamic patient mobility.
+%
+% --- Huang ---
+% Fog-driven communication-efficient and privacy-preserving federated learning based on compressed sensing
+% Hui Huang, Di Xiao, Mengdi Wang, Jia Liang, Min Li, Lvjun Chen, Yanqi Liu.
+% Main Research Question / Problem Statement: Standard FL sparsification methods compress only upstream client-to-server traffic while ignoring downstream broadcast overhead, leaving the system vulnerable to gradient leakage and inference attacks in IoT environments.
+% Key Methodology & Frameworks Used: Proposes CEPPFL, a fog-driven scheme incorporating weighted feature extraction, Differential Privacy (DP), and Compressed Sensing (CS) with ambiguity matrices. Intermediate fog nodes conduct compressive transformation and local aggregation before communicating with the central cloud. Evaluated on MNIST and Fashion-MNIST datasets.
+% Main Results and Conclusions: Achieves simultaneous upstream and downstream data compression while demonstrating provable resistance against data reconstruction, model inversion, and collusion attacks under Non-IID data distributions.
+% Key Limitations: Tuning the differential privacy budget $\epsilon$ creates an explicit trade-off between privacy protection and global model accuracy; matrix ambiguity transformations introduce added compute load on fog nodes.
+%
+% --- Valdez-Solis ---
+% Privacy and security for 6G networks via Fog/Edge Computing, Blockchain, and Federated Learning: A survey and taxonomy
+% Wilson Valdez-Solis, Juan Parra-Ullauri, Dimitra Simeonidou, Attila Kertesz.
+% Main Research Question / Problem Statement: Emerging 6G wireless networks demand ultra-low latency, ultra-high throughput, scalable privacy, and trustworthy coordination, but integrating Fog/Edge Computing (FC/EC), Blockchain (BC), and Federated Learning (FL) lacks a comprehensive taxonomy and deployment roadmap.
+% Key Methodology & Frameworks Used: Systematic review (analyzing 165 core papers from 2016–2026) and a 7-dimensional taxonomy (Functionalities, Architectural Features, Data Management, Security/Privacy, Energy Efficiency, Applications, Cross-Cutting Issues)90more_horiz. Maps technology integration directly to 6G service classes (eMBB, URLLC, mMTC) and SDO standards (3GPP, ETSI, IEEE, ITU-T).
+% Main Results and Conclusions: Delivers an end-to-end architectural blueprint for FC/EC-BC-FL integration in 6G; analyzes quantitative trade-offs between blockchain consensus latency, differential privacy budgets, and energy efficiency.
+% Key Limitations: Excludes Generative AI and Large Language Model governance; highlights a lack of standardized 6G empirical testbeds and cross-SDO API harmonization.
+%
+% --- Niu ---
+% Privacy-preserving and Verifiable Federated Learning with weighted average aggregation in edge computing
+% Shufen Niu, Weiying Kong, Lihua Chen, Xusheng Zhou, Ning Wang.
+% Main Research Question / Problem Statement: Malicious interception or tampering of gradients during edge-to-cloud transmission, unverified cloud aggregation results, and gradient privacy leakage in cloud-edge collaborative FL.
+% Key Methodology & Frameworks Used: Proposes a cloud-edge collaborative privacy-preserving and verifiable FL scheme with weighted average aggregation120121. Uses multi-party secret sharing and cross-validation across dual non-colluding cloud servers to verify aggregation correctness without revealing raw gradients. Tested on MNIST and CIFAR-10 dataset.
+% Main Results and Conclusions: Dramatically reduces client-side encryption and verification computational overhead compared to PPVerifier, VCD-FL, and VPFL baselines, while ensuring gradient confidentiality and aggregation verifiability.
+% Key Limitations: Relies on the security assumption of non-colluding dual cloud servers; current scheme lacks mechanisms to detect active malicious user behaviors during local client training.
+%
+% --- Dinh ---
+% Privacy-preserving hierarchical federated learning via CKKS homomorphic encryption
+% Ton That Tam Dinh, Manh Cuong Ho, Ayalneh Bitew Wondmagegn, Dongwook Won, Juyoung Kim, Sungrae Cho.
+% Main Research Question / Problem Statement: Plaintext model updates in two-tier HFL expose client parameters to honest-but-curious edge/cloud infrastructure, whereas applying homomorphic encryption causes massive payload expansion that strains bandwidth-constrained wireless channels.
+% Key Methodology & Frameworks Used: Two-tier HFL secured with Cheon–Kim–Kim–Song (CKKS) approximate homomorphic encryption (using TenSEAL). Evaluated under realistic wireless channel fading, packet loss, retransmissions, and deadline-based admission over 100 global rounds on Fashion-MNIST (CNN with 421,642 parameters across 20 clients and 4 edge servers).
+% Main Results and Conclusions: CKKS numerical approximation error is negligible (relative aggregation error < 6x10^-10), achieving >91% accuracy under reliable links. However, under wireless deadlines, ciphertext expansion reduces successful client admissions per round (down to 1–7 clients), dropping final accuracy to ~89%. Identifies wireless delivery bottlenecks, rather than arithmetic error, as the primary barrier.
+% Key Limitations: High payload expansion causes severe client dropouts under strict round deadlines; empirical testing is restricted to a CNN on Fashion-MNIST.
 
 \section{Statistical Heterogeneity, Model Optimization and Constraints at the IoT Edge}
 % TODO: Ramadan (2025): FL and TinyML on IoT edge devices
+% DRAFT: my summary, reword (Ramadan)
+{\color{gray}
+Federated learning and TinyML on IoT edge devices: Challenges, advances, and future directions
+
+Montaser N.A. Ramadan, Mohammed A.H. Ali, Shin Yee Khoo, Mohammad Alkhedher.
+
+Main Research Question / Problem Statement: Implementing FL and TinyML on ultra-constrained IoT microcontrollers is severely bottlenecked by extreme memory limits (RAM/Flash), high power consumption, communication bandwidth costs, and Non-IID environmental data skew.
+
+Key Methodology \& Frameworks Used: Systematic survey and a proposed FL-IoT framework featuring over-the-air (OTA) model updates, LoRa-based distributed communication, and lossless data compression algorithms (Run-Length Encoding, Huffman, LZW, MDEH). Uses Raspberry Pi aggregation nodes and microcontroller IoT clients (e.g., Arduino Nano 33 BLE, ESP32).
+
+Main Results and Conclusions: Demonstrates that lossless compression (e.g., the MDEH algorithm achieving a 93.7\% compression ratio) and LoRa offloading significantly cut transmission overhead and power consumption, enabling scalable learning on compact microcontrollers.
+
+Key Limitations: Operational large-scale deployments combining FL, TinyML, and IoT remain mostly theoretical; trade-offs between compression computational overhead and energy savings on microcontrollers require further optimization.
+}
+
 % TODO: Jalali KhalilAbadi (2026): FL in cloud-edge-fog architectures (survey)
+% DRAFT: my summary, reword (Jalali)
+{\color{gray}
+Federated learning in cloud-edge-fog architectures: Enhancing privacy, efficiency, and scalability
+
+Zahra Jalali KhalilAbadi, Najme Mansouri, Mohammad Masoud Javidi.
+
+Main Research Question / Problem Statement: Existing literature lacks a holistic, cross-layer survey that analyzes the multi-objective trade-offs, adversarial threats, model drift, and system heterogeneity of FL across the integrated cloud-edge-fog computing stack.
+
+Key Methodology \& Frameworks Used: Systematic literature review examining 115 peer-reviewed studies (2018–2026) extracted from ScienceDirect, IEEE Xplore, and SpringerLink. Establishes an 8-pathway taxonomy covering security/privacy, IoT/edge FL, statistical heterogeneity, healthcare, client selection, resource scheduling, blockchain-FL, and domain-specific applications.
+
+Main Results and Conclusions: Categorizes FL research distribution (e.g., 29\% conventional FL, 18\% IoT, 18\% blockchain-FL, 54\% edge environment). Provides a comparative trade-off matrix contrasting homomorphic encryption, differential privacy, and secret sharing, alongside a cross-domain synthesis of industrial verticals.
+
+Key Limitations: Most surveyed literature relies on simulation rather than physical testbeds; notable research gaps remain in defense-oriented FL, energy-efficient fog optimization, and quantum-enhanced.
+}
+
 % TODO: Liu (2022): Hierarchical FL with quantization (Q-HierFAVG)
+% DRAFT: my summary, reword (Liu (2022))
+{\color{gray}
+Hierarchical Federated Learning With Quantization: Convergence Analysis and System Design
+
+Lumin Liu, Jun Zhang, S.H. Song, Khaled B. Letaief.
+
+Main Research Question / Problem Statement: Heavy model weight exchanges over resource-constrained wireless access links and WAN backbones cause severe communication latency bottlenecks in client-edge-cloud hierarchical FL.
+
+Key Methodology \& Frameworks Used: Proposes the Quantized Hierarchical Federated Averaging (Q-HierFAVG) algorithm, combining periodic edge/cloud aggregations with low-bit gradient quantization. Formulates mathematical convergence proofs for non-convex loss functions and optimizes edge/cloud aggregation intervals alongside quantization bit allocation.
+
+Main Results and Conclusions: Mathematically proves that Q-HierFAVG achieves sublinear convergence for non-convex loss functions, confirming that gradient quantization substantially reduces network communication traffic without sacrificing target test accuracy.
+
+Key Limitations: Convergence bounds rely on assumptions of bounded gradient variance and Lipschitz continuity, assuming static, non-fading network channel conditions during execution.
+}
+
 % TODO: Kotecha (2024?): Performance evaluation of FL in edge computing environment
+% DRAFT: my summary, reword (Kotecha)
+{\color{gray}
+Performance Evaluation of Federated Learning in Edge Computing Environment
+
+Prajay Kotecha, Tanvi Dhoka, Jitendra Bhatia, Malaram Kumhar, Rajesh Gupta, Sudeep Tanwar, Nilesh Kumar Jadav83.
+
+Main Research Question / Problem Statement: Centralized ML creates severe data privacy and network congestion concerns, whereas deploying FL across heterogeneous edge devices introduces processing complexity and execution speed bottlenecks.
+
+Key Methodology \& Frameworks Used: Literature review of edge FL frameworks and an empirical case study implementing the FedAvg algorithm on a two-layer neural network using PyTorch for handwritten digit recognition on the MNIST dataset8486.
+
+Main Results and Conclusions: Achieved 94.56\% test accuracy after 13 FedAvg iterations (improving from an initial 85\% accuracy in round 1), proving that decentralized edge FL protects raw data privacy while achieving strong model convergence.
+
+Key Limitations: Empirical case study is restricted to a simple 2-layer neural network on lightly shuffled MNIST data, lacking evaluation on deep neural network architectures, extreme Non-IID data distributions, or physical wireless network impairments.
+}
+
 % TODO: Abdel-Basset (2022?): Privacy-preserved learning from non-i.i.d. data in fog-assisted IoT
+% DRAFT: my summary, reword (Abdel-Basset)
+{\color{gray}
+Privacy-preserved learning from non-i.i.d data in fog-assisted IoT: A federated learning approach
+
+Mohamed Abdel-Basset, Hossam Hawash, Nour Moustafa, Imran Razzak, Mohamed Abd Elfattah.
+
+Main Research Question / Problem Statement: Centralized cloud learning risks raw IoT data exposure, while standard FL models suffer severe accuracy degradation and vulnerability to class-reconstruction attacks under extreme Non-IID data skew across fog nodes.
+
+Key Methodology \& Frameworks Used: Proposes the Privacy-Preserved Federated Deep Learning (PP-FDL) framework109. Employs a Generative Adversarial Network (GAN) architecture where each fog node generates private class identifiers to prevent adversarial class recovery, combined with FedProx model aggregation. Evaluated on MNIST and CIFAR-10 datasets across 10 virtual client devices.
+
+Main Results and Conclusions: Effectively prevents adversarial class recovery and gradient inversion attacks without incurring the high computational burden of encryption or the utility loss of noise-based differential privacy, outperforming baseline FL and FedBN models on Non-IID datasets.
+
+Key Limitations: Does not address deep model optimization on resource-constrained IoT end-device hardware; uninvestigated against active model poisoning or collusion attacks.
+}
 
 \section{Proactive Autoscaling for Containerized Workloads}
 
 % PREVIEW
 Dogani and Khunjush~\cite{dogani2024} propose FedAvg-BiGRU, a proactive autoscaler for Kubernetes at the edge. Federated learning trains a BiGRU workload predictor across edge nodes, so only model updates travel to the cloud instead of raw workload data. The planner then converts multi-step predictions into a number of pods, using the Cool Down Time (CDT) to avoid contradictory scaling actions. In simulation on FIFA World Cup request traces, the approach reduces under-provisioning compared with the reactive Kubernetes autoscaler, at the cost of more over-provisioning. However, the authors scale pods for containerized web applications and use federated learning only to train the predictor. They do not dynamically allocate CPU for containers running federated learning.
 
+% DRAFT: my summary, reword (Dogani)
+{\color{gray}
+Proactive auto-scaling technique for web applications in container-based edge computing using federated learning model
+
+Javad Dogani, Farshad Khunjush.
+
+Main Research Question / Problem Statement: Centralized workload telemetry collection for proactive autoscaling in Kubernetes edge clusters creates privacy risks and network delays, while reactive autoscalers (default KHPA) suffer Cool Down Time (CDT) enforcement delays leading to severe under-provisioning.
+
+Key Methodology \& Frameworks Used: Develops FedAvg-BiGRU, a proactive multi-step autoscaling model for Kubernetes edge worker nodes. Combines Federated Averaging with Bidirectional Gated Recurrent Units (BiGRU) and a CDT-aware planner enforcing a Gradual Reduction Strategy134more\_horiz. Tested on FIFA World Cup 98 web log trace data (1.35 billion requests) across 16 edge nodes.
+
+Main Results and Conclusions: Achieved 3-step ahead MAPE of 9.04\%, showing no statistically significant difference from centralized models (Diebold-Mariano test p-value = 0.062 > 0.05)134138. Reduced under-provisioning from 6.23\% (KHPA) down to 0.26\%, while reducing scaling actions by \textasciitilde{}45\%.
+
+Key Limitations: Increases over-provisioning (theta\_O = 13.04\%) relative to reactive KHPA (3.05\%) to guarantee zero under-provisioning during sudden traffic spikes; does not model stragglers or dynamic client dropouts during FL rounds.
+}
+
 % PREVIEW
 Nikolaidis et al.~\cite{nikolaidis2023} study how CPU limits affect federated learning containers running Flower on a Kubernetes cluster of four physical nodes. They show that default orchestrator settings are not suited to FL workloads: in their experiments, a client used about nine of sixteen reserved CPUs, and halving the reservation to eight CPUs increased training time by about 22\%. They also observe that FL workloads follow predictable performance patterns. However, the CPU limits are fixed before training starts, and a runtime module that adjusts them is left as future work.
 
+% DRAFT: my summary, reword (Nikolaidis)
+{\color{gray}
+\textbf{1. Problem}
+
+Orchestrators like Kubernetes are agnostic to the requirements of FL workloads, so users must state the amount of CPU and memory themselves. This risks under-provisioning (bottlenecks, starvation) or over-provisioning (wasted resources, less room for other jobs). (p. 6, p. 9)
+
+\textbf{2. Method}
+
+\begin{itemize}
+\item Benchmark study, not a new algorithm. Flower FL containers on Kubernetes, with a monitoring stack (cAdvisor, Prometheus, Grafana). (pp. 2, 10)
+\item Tests CPU limits per FL client, client placement, and two FL jobs at the same time.
+\item CPU is the resource they adjust. Memory needs a fixed size, because changing it at runtime can crash the app. (p. 16)
+\end{itemize}
+\textbf{3. Setup}
+
+\begin{itemize}
+\item Hardware / simulator: real bare-metal Kubernetes cluster, 4 server nodes, 24 cores and 128 GB RAM each, 1 Gbps links. (p. 11)
+\item Dataset / workload: PyTorch CNN on MNIST for the CPU experiments; MobileNetV2 on CIFAR-10 elsewhere. (pp. 11, 16)
+\item Baselines compared against: unrestricted "native" run versus caps of 16, 8, 4 and 2 CPUs per client. (p. 16)
+\end{itemize}
+\textbf{4. Results}
+
+\begin{itemize}
+\item The FL job used only about 9 CPUs, so 6 of 16 reserved CPUs sat idle. (p. 16)
+\item 16 to 8 CPUs: half the CPUs, about 22\% longer training. (p. 16; verify the +22.4\% label in Fig. 9, p. 17)
+\item 4 CPUs: training time about 3 times longer (100 s to 300 s). 2 CPUs: about 6 times native. (p. 17)
+\item Capping gives steadier CPU use for parallel FL jobs. (p. 20)
+\item Default Kubernetes placement is unbalanced and creates stragglers. (p. 18)
+\item FL load is very predictable. (Fig. 15, p. 21)
+\end{itemize}
+\textbf{5. Limitations}
+
+\begin{itemize}
+\item CPU caps are static. No controller changes them while training runs.
+\item Capping can cause deadlocks when many jobs compete. (p. 20)
+\item CPU tests use one model and one dataset.
+\item Runtime adjustment is only named as future work. (p. 23)
+\end{itemize}
+}
+
 % PREVIEW
 Subramanya and Riggio~\cite{subramanya2021} train FFNN, LSTM and CNN-LSTM forecasting models, both centralized and federated, on 43 days of hourly traffic from three base stations, and use the predictions to scale an nginx web server on a Kubernetes prototype, horizontally in whole instances and vertically in steps of 100 millicores. Predictive scaling reacts faster than the Kubernetes reactive baseline, whose waits of three to five minutes delay its response to traffic spikes. The federated predictors are less accurate than the centralized ones; for the LSTM, the mean absolute error is 1.49 against 0.55, which the authors attribute to non-IID data. Critically for this thesis, the scaled application is a web server rather than an FL job, and vertical changes are applied through a new deployment that restarts the pod and raises response time at load peaks.
+
+% DRAFT: my summary, reword (Subramanya)
+{\color{gray}
+\textbf{1. Problem}
+
+Reactive autoscalers wait 3 to 5 minutes after the previous scaling action, so they react slowly to sudden traffic spikes, which is why the authors build predictors that forecast the future number of VNF instances, or CPU units, needed for the expected traffic load, in order to scale both the number of VNFs (horizontal) and the CPU of each VNF in 100 millicore steps (vertical). (pp. 1, 6, 11)
+
+\textbf{2. Method}
+
+\begin{itemize}
+\item FFNN, LSTM and CNN-LSTM predictors, plus encoder-decoder LSTM and CNN-LSTM for 3-step forecasts. (pp. 2, 7 to 9)
+\item Trained in a centralized way (TensorFlow) and a federated way (PyTorch and PySyft, with and without model averaging). (pp. 9 to 10)
+\item Two goals: QoS-prioritized (round up) and cost-prioritized (round down). (p. 6)
+\item Kubernetes prototype with a Monitor, Analyze, Plan, Execute loop. FL or centralized learning does the Analyze and Plan steps. (pp. 10 to 11)
+\end{itemize}
+\textbf{3. Setup}
+
+\begin{itemize}
+\item Hardware / simulator: simulation with 3 mobile edge hosts. Prototype with one master and 3 worker hosts (Intel Core i7, 1.8 GHz, 4 cores). (pp. 11, 15)
+\item Dataset / workload: operator traffic from 3 base stations, 43 days, hourly. Not public (NDA). Prototype application is an nginx web server. (pp. 5, 14)
+\item Baselines compared against: seasonal persistence model for prediction. Reactive Kubernetes HPA (waits 3 min after scale-up, 5 min after scale-down) and VPA for scaling. (pp. 7, 13)
+\end{itemize}
+\textbf{4. Results}
+
+\begin{itemize}
+\item LSTM MAE: 0.55 centralized, 1.44 federated without model averaging, 1.49 with model averaging. (Table II, p. 14)
+\item Multi-step, encoder-decoder CNN-LSTM MAE: 0.06, 0.08, 0.18 for steps 1 to 3, against 0.52, 0.72, 0.82 for LSTM. (p. 12)
+\item Predictive scaling reacts faster than reactive HPA to traffic spikes. (Figs. 10 and 11, p. 14)
+\item Cost-prioritized used about 25\% fewer containers than QoS-prioritized at minute 20, but response time was 106 s against 76 s. (p. 15)
+\end{itemize}
+\textbf{5. Limitations}
+
+\begin{itemize}
+\item FL predictors are less accurate than centralized ones, which the authors blame on non-IID data. (p. 14)
+\item Vertical scaling is applied through a new deployment, which restarts the pod and raises response time at load peaks. (pp. 10, 15)
+\item The scaled application is nginx, not an FL job.
+\item Training FL models pushed the host CPU to 100\%, which the authors call a drawback. (p. 15)
+\item Small prototype (3 hosts), and the hourly data was replayed at 5-minute steps. (p. 14)
+\end{itemize}
+}
 
 \section{Synthesis and Research Gap}
 
@@ -51,11 +316,6 @@ Prigent & 2024 & & & \\
 Dogani & 2024 & & & \\
 Nikolaidis & 2023 & & & \\
 Subramanya & 2021 & & & \\
-Khan & 2025 & & & \\
-Huang & 2025 & & & \\
-Valdez-Solis & 2026 & & & \\
-Niu & 2025? & & & \\
-Dinh & 2026 & & & \\
 Ramadan & 2025 & & & \\
 Jalali KhalilAbadi & 2026 & & & \\
 Liu (Q-HierFAVG) & 2022 & & & \\
