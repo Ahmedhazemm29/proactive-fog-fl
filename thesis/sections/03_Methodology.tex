@@ -1,1 +1,5 @@
 \chapter{Methodology}\label{chap:methodology}
+
+
+\section{Dataset}
+This work uses the FIFA World Cup 98 dataset, which records every HTTP request made to the official 1998 World Cup website. The logs were converted into the number of requests per minute. This dataset was chosen because it is the same dataset used by Dogani and Khunjush~\cite{dogani2024}, so our results can be compared directly with theirs. Dogani and Khunjush report 88 days starting on 30 April. However, the logs for that first day only cover the last 30 minutes, because logging started at 23:30. These 325 requests were dropped, so our trace runs from 1 May to 26 July 1998 and covers 87 days, which is 125,280 minutes in total.

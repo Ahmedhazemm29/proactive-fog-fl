@@ -1,16 +1,68 @@
 \chapter{Literature Review}\label{chap:LiteratureReview}
-Literature Review
+% TODO: intro paragraph, why the topic matters
 
-\section{Fog/Edge Architectures and Hierarchical FL}
+\section{Architectural Hierarchy, Decentralization and Edge/Fog Computing}
+% TODO: Liu (2020?): Client-Edge-Cloud Hierarchical Federated Learning
+% TODO: Qayyum (2025): DHFL: decentralized hierarchical FL with dynamic global aggregation
+% TODO: Zhao (2022?): Edge resource autoscaling for hierarchical FL over public edge platforms
+% TODO: Prigent (2024): Enabling FL across the computing continuum
+% TODO: Dogani (2024): Proactive auto-scaling with FL (already in the Proactive Autoscaling section below)
+
+\section{Cryptographic Privacy Mechanisms and Secure Aggregation Overhead}
+% TODO: Khan (2025): End-to-end privacy-aware FL for wearable health devices (CKKS, in-network aggregation)
+% TODO: Huang (2025): Fog-driven communication-efficient and privacy-preserving FL (compressed sensing)
+% TODO: Valdez-Solis (2026): Privacy and security for 6G via fog/edge, blockchain and FL (survey)
+% TODO: Niu (2025?): Privacy-preserving and verifiable FL with weighted average aggregation
+% TODO: Dinh (2026): Privacy-preserving hierarchical FL via CKKS homomorphic encryption
+
+\section{Statistical Heterogeneity, Model Optimization and Constraints at the IoT Edge}
+% TODO: Ramadan (2025): FL and TinyML on IoT edge devices
+% TODO: Jalali KhalilAbadi (2026): FL in cloud-edge-fog architectures (survey)
+% TODO: Liu (2022): Hierarchical FL with quantization (Q-HierFAVG)
+% TODO: Kotecha (2024?): Performance evaluation of FL in edge computing environment
+% TODO: Abdel-Basset (2022?): Privacy-preserved learning from non-i.i.d. data in fog-assisted IoT
+
+\section{Proactive Autoscaling for Containerized Workloads}
 
 % PREVIEW
 Dogani and Khunjush~\cite{dogani2024} propose FedAvg-BiGRU, a proactive autoscaler for Kubernetes at the edge. Federated learning trains a BiGRU workload predictor across edge nodes, so only model updates travel to the cloud instead of raw workload data. The planner then converts multi-step predictions into a number of pods, using the Cool Down Time (CDT) to avoid contradictory scaling actions. In simulation on FIFA World Cup request traces, the approach reduces under-provisioning compared with the reactive Kubernetes autoscaler, at the cost of more over-provisioning. However, the authors scale pods for containerized web applications and use federated learning only to train the predictor. They do not dynamically allocate CPU for containers running federated learning.
-
-
-\section{Resource Allocation and Autoscaling for FL}
 
 % PREVIEW
 Nikolaidis et al.~\cite{nikolaidis2023} study how CPU limits affect federated learning containers running Flower on a Kubernetes cluster of four physical nodes. They show that default orchestrator settings are not suited to FL workloads: in their experiments, a client used about nine of sixteen reserved CPUs, and halving the reservation to eight CPUs increased training time by about 22\%. They also observe that FL workloads follow predictable performance patterns. However, the CPU limits are fixed before training starts, and a runtime module that adjusts them is left as future work.
 
 % PREVIEW
 Subramanya and Riggio~\cite{subramanya2021} train FFNN, LSTM and CNN-LSTM forecasting models, both centralized and federated, on 43 days of hourly traffic from three base stations, and use the predictions to scale an nginx web server on a Kubernetes prototype, horizontally in whole instances and vertically in steps of 100 millicores. Predictive scaling reacts faster than the Kubernetes reactive baseline, whose waits of three to five minutes delay its response to traffic spikes. The federated predictors are less accurate than the centralized ones; for the LSTM, the mean absolute error is 1.49 against 0.55, which the authors attribute to non-IID data. Critically for this thesis, the scaled application is a web server rather than an FL job, and vertical changes are applied through a new deployment that restarts the pod and raises response time at load peaks.
+
+\section{Synthesis and Research Gap}
+
+% TODO: decide the table columns (the three empty columns below are placeholders)
+\begin{table}[htbp]
+\centering
+\caption{Comparison of the reviewed papers (placeholder)}
+\label{tab:lit-comparison}
+\begin{tabular}{llccc}
+\hline
+Paper & Year & Column 1 & Column 2 & Column 3 \\
+\hline
+Liu & 2020? & & & \\
+Qayyum & 2025 & & & \\
+Zhao & 2022? & & & \\
+Prigent & 2024 & & & \\
+Dogani & 2024 & & & \\
+Nikolaidis & 2023 & & & \\
+Subramanya & 2021 & & & \\
+Khan & 2025 & & & \\
+Huang & 2025 & & & \\
+Valdez-Solis & 2026 & & & \\
+Niu & 2025? & & & \\
+Dinh & 2026 & & & \\
+Ramadan & 2025 & & & \\
+Jalali KhalilAbadi & 2026 & & & \\
+Liu (Q-HierFAVG) & 2022 & & & \\
+Kotecha & 2024? & & & \\
+Abdel-Basset & 2022? & & & \\
+\hline
+\end{tabular}
+\end{table}
+
+% TODO: closing paragraph (what stood out across the papers + the gap this thesis fills)
