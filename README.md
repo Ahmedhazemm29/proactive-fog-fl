@@ -8,7 +8,9 @@ This repository reproduces Dogani & Khunjush (2024), "Proactive auto-scaling tec
 
 Bachelor thesis by Ahmed Hazem, German International University (GIU), Cairo.
 
-Supervisors: Dr. Yasmine Zaghloul, Prof. Dr.-Ing. Ansgar Meroth.
+Supervisor: Dr. Yasmine Zaghloul
+
+Co-supervisor: Prof. Dr.-Ing. Ansgar Meroth
 
 ---
 
@@ -320,5 +322,6 @@ Two containers share one CPU while they train a small model. A reactive and a pr
 ---
 
 **Author:** Ahmed Hazem  
-**Supervisors:** Dr. Yasmine Zaghloul (first), Prof. Dr.-Ing. Ansgar Meroth (second)  
+**Supervisor:** Dr. Yasmine Zaghloul  
+**Co-supervisor:** Prof. Dr.-Ing. Ansgar Meroth  
 German International University (GIU), Bachelor Thesis
