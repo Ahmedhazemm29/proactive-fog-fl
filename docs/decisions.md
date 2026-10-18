@@ -662,7 +662,7 @@ The code and results are in this repository:
   | CentralBiGRU, seed 0 | 1.01 / 1.27 / 1.04 | 0.93 / 0.91 / 0.88 |
 
   The MAE ratio is the same, 0.89 to 0.90, for every seed and step. The MAPE ratio moves from 0.91 to 1.06 with the seed, because the quiet minutes drive it (finding 4.19).
-- **Against Dogani:** he reports no naive forecast, so his ratio cannot be computed. With the naive MAPE of the real trace's test part, 11.31 (finding 4.21), his would be 9.04 / 11.31 = 0.80, against our 1.02.
+- **Against Dogani:** he reports no naive forecast, so his ratio cannot be computed. Our estimate assumes his naive MAPE behaves like the real trace's over its test part, 11.31 (finding 4.21). His ratio would then be 9.04 / 11.31 = 0.80, against our 1.02.
 - **The 4.9 points at t+3:** the gap between our 13.96 and his 9.04 splits into four parts:
 
   | Part | Points | How |
@@ -670,9 +670,9 @@ The code and results are in this repository:
   | Seed noise | 0.61 | Seed 0's 13.96 against the 3-seed mean of 13.35 |
   | Burstier data | 1.85 | Our ratio 1.02 times the naive gap 13.13 - 11.31 |
   | Measurement | about 0 | The best-fitting reading is ours (finding 4.24) |
-  | Left: the model against the naive forecast | 2.46 | Ratio 1.02 against his 0.80, times 11.31 |
+  | What remains | 2.46 | The rest of the gap after seed noise and data: ratio 1.02 against his estimated 0.80, times 11.31 |
 
-- **Consequence:** the ratio is a fairer measure for our own claims, because it does not depend on the traffic level or the units. Against Dogani it needs an assumption about his naive score. The 2.46 points left mean his model beat the naive forecast by about 20% in MAPE, while ours only matches it. In MAE ours beats it by 10%.
+- **Consequence:** the ratio is a fairer measure for our own claims, because it does not depend on the traffic level or the units. Against Dogani it needs an assumption about his naive score. The 2.46 points are what remains after seed noise and data, and most likely reflect model quality. By our estimate, which assumes his naive score behaves like the real trace's, his model beat the naive forecast by about 20% in MAPE, while ours only matches it. In MAE ours beats it by 10%.
 
 ### 4.26 Training on [-1, 1] changes how the score looks, not the forecasts
 
