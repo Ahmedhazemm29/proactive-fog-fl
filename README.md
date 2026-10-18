@@ -21,7 +21,8 @@ Dogani's main claim holds. The planner has fewer shortages and scales less often
 
 ![Traffic and running workers of the three scalers in the four live windows](results/autoscaler_live/windows_workers.png)
 
-*Live runs on four 3-hour windows: the traffic in workers (grey) and the workers each scaler ran.*
+*Live runs on four 3-hour windows: the traffic in workers (grey) and the workers each scaler ran.
+federated ≈ central*
 
 ![Real requests of node 0 and the t+3 forecasts of the four models](results/predictors/prediction_node_00.png)
 
