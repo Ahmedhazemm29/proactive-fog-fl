@@ -1,4 +1,4 @@
-# Workload prediction, 16 synthetic FIFA nodes (like Dogani's Table 8)
+# Workload prediction, 16 synthetic FIFA nodes (Dogani's Table 8)
 
 W = 30 minutes, test part = last 20% of every node, errors pooled over all nodes' test windows, in requests per minute. MAPE in %.
 
