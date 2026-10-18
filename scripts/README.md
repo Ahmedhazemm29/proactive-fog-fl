@@ -5,6 +5,7 @@ This folder holds one command-line script per task. Run them from the repo root 
 - `fifa_workload.py`, `plot_fifa_workload.py`: step 1, the FIFA requests per minute and their plot.
 - `synthetic_traces.py`: step 2, the 16 synthetic node traces.
 - `train_predictors.py`: step 3, trains and compares the predictors.
+- `predictor_gap.py`, `predictor_experiments.py`, `mape_readings.py`: step 3, checks on the gap to Dogani's MAPE, single training experiments and every way to compute MAPE.
 - `simulate_autoscaler.py`: step 4A, the simulation of the three scalers.
 - `autoscaler_sensitivity.py`: step 4A, the sensitivity grid.
 - `live_calibrate.py`: step 4B, the requests one worker handles at 70% CPU.

@@ -67,8 +67,14 @@ def model_maker(name, args, device):
     return lambda: architecture(args.units, args.dropout).to(device)
 
 
-def load_nodes(paths, window, holiday_days, device):
-    return [NodeData(path, window, holiday_days, device) for path in paths]
+def scale_range(text):
+    """'0,1' or '-1,1' -> (0.0, 1.0) or (-1.0, 1.0): the min-max range of the inputs and targets."""
+    a, b = (float(v) for v in text.split(","))
+    return a, b
+
+
+def load_nodes(paths, window, holiday_days, device, scale="0,1"):
+    return [NodeData(path, window, holiday_days, device, scale_range(scale)) for path in paths]
 
 
 def train_federated(name, nodes, args, device):
@@ -250,6 +256,8 @@ def main():
     parser.add_argument("--patience", type=int, default=5,
                         help="stop after this many rounds or epochs without a better validation loss (default 5)")
     parser.add_argument("--units", type=int, default=64)
+    parser.add_argument("--scale", default="0,1",
+                        help="min-max range: 0,1 (Eq. 8, default) or -1,1 (Section 6.2, decision 3.12)")
     parser.add_argument("--dropout", type=float, default=0.3)
     parser.add_argument("--batch-size", type=int, default=60)
     parser.add_argument("--lr", type=float, default=1e-3, help="Adam learning rate (default 0.001)")
@@ -274,7 +282,7 @@ def main():
     tried = {}
     for window in windows:
         log(f"FedAvg-BiGRU, W = {window}:")
-        nodes = load_nodes(paths, window, holiday_days, device)
+        nodes = load_nodes(paths, window, holiday_days, device, args.scale)
         tried[window] = (nodes, *train_federated("FedAvg-BiGRU", nodes, args, device))
     chosen = min(windows, key=lambda w: tried[w][3]["best_val_loss"])
     log("W selection: " + ", ".join(f"W = {w}: val MAE {tried[w][3]['best_val_loss']:.5f}" for w in windows)
