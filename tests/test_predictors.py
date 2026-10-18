@@ -112,6 +112,17 @@ class Windows(unittest.TestCase):
         expected = (starts[:, None] + 30 + np.arange(data.HORIZON)) % 7
         np.testing.assert_array_equal(real, expected)          # exact, zeros included
 
+    def test_scale_to_minus_one_one(self):
+        # Section 6.2's range: the training minimum goes to -1, the maximum to +1, and back exactly
+        folder = tempfile.mkdtemp()
+        node = data.NodeData(write_trace(folder), window=30, holiday_days=[], device="cpu", scale_range=(-1.0, 1.0))
+        first, end = node.bounds["train"]
+        self.assertAlmostEqual(float(node.series[first, 0]), -1.0, places=6)
+        self.assertAlmostEqual(float(node.series[end - 1, 0]), 1.0, places=6)
+        _, real = training.predict(models.BiGRU(), node)
+        starts = node.starts["test"].numpy()
+        np.testing.assert_array_equal(real, starts[:, None] + 30 + np.arange(data.HORIZON))   # minute i has i requests
+
     def test_scaler_fitted_on_training_part(self):
         first, end = self.node.bounds["train"]
         self.assertEqual(self.node.scaler.low[0], first)

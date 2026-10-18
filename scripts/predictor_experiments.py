@@ -4,6 +4,7 @@ Small training experiments on the predictor gap: one model, one setting.
 Usage:
     .venv/bin/python scripts/predictor_experiments.py --model FedAvg-BiGRU --seed 1 --tag seed1
     .venv/bin/python scripts/predictor_experiments.py --model FedAvg-BiGRU --units 32 --tag units32
+    .venv/bin/python scripts/predictor_experiments.py --model CentralBiGRU --scale=-1,1 --tag scale11
 
 Same data, W, training and stopping rule as the step 3 run in
 results/predictors/report.json (patience 10). Only the options given here
@@ -38,6 +39,7 @@ def main():
     parser.add_argument("--tag", required=True, help="name of this experiment, e.g. seed1")
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--units", type=int, default=None)
+    parser.add_argument("--scale", default=None, help="min-max range, 0,1 or -1,1 (step 3: 0,1)")
     parser.add_argument("--report", default=os.path.join(ROOT, "results", "predictors", "report.json"))
     parser.add_argument("--out", default=os.path.join(ROOT, "results", "predictor_gap", "experiments.csv"))
     parser.add_argument("--weights-dir", default=os.path.join(ROOT, "data", "predictor_gap"))
@@ -45,14 +47,14 @@ def main():
 
     # The step 3 settings, with the changed ones on top
     trained = json.load(open(options.report))
-    args = argparse.Namespace(**trained["settings"])
-    for key in ("seed", "units"):
+    args = argparse.Namespace(**{"scale": "0,1", **trained["settings"]})
+    for key in ("seed", "units", "scale"):
         if getattr(options, key) is not None:
             setattr(args, key, getattr(options, key))
     window = trained["chosen_window"]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     paths = [os.path.join(args.traces, f"node_{i:02d}.csv") for i in range(args.nodes)]
-    nodes = tp.load_nodes(paths, window, french_holidays(load_node(paths[0])[0]), device)
+    nodes = tp.load_nodes(paths, window, french_holidays(load_node(paths[0])[0]), device, args.scale)
 
     started = time.time()
     train = tp.train_federated if options.model.startswith("FedAvg") else tp.train_pooled
@@ -66,6 +68,7 @@ def main():
     for k in range(HORIZON):
         m = metrics(np.concatenate([p[:, k] for p, _ in per]), np.concatenate([r[:, k] for _, r in per]))
         rows.append({"tag": options.tag, "model": options.model, "seed": args.seed, "units": args.units,
+                     "scale": args.scale,
                      "rounds_or_epochs": cost.get("rounds", cost.get("epochs")),
                      "best": cost.get("best_round", cost.get("best_epoch")),
                      "train_seconds": round(seconds), "step": f"t+{k + 1}",

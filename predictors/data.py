@@ -2,7 +2,8 @@
 From a node's per-minute trace to model inputs (paper Sections 5.2 and 6.1).
 
 Features per minute (5): requests, day of week, hour, minute, holiday.
-Each node is scaled on its own with min-max, fitted on its training part only.
+Each node is scaled on its own with min-max, fitted on its training part only,
+to [0, 1] (Eq. 8) or, as an option, to [-1, 1] (Section 6.2, decision 3.12).
 Split per node in time order: 60% train, 20% validation, 20% test.
 
 Windows are not stored: a node keeps its whole feature table on the GPU, and
@@ -50,31 +51,35 @@ def split_bounds(n):
 
 
 class MinMax:
-    """x' = (x - min) / (max - min) per feature (paper Eq. 8), fitted on training rows."""
+    """
+    x' = a + (b - a) (x - min) / (max - min) per feature, fitted on training
+    rows. Range (a, b) = (0, 1) is paper Eq. 8, (-1, 1) is Section 6.2.
+    """
 
-    def __init__(self, train_rows):
+    def __init__(self, train_rows, scale_range=(0.0, 1.0)):
         self.low = train_rows.min(axis=0)
         span = train_rows.max(axis=0) - self.low
-        self.span = np.where(span > 0, span, 1.0)          # a constant feature stays 0
+        self.span = np.where(span > 0, span, 1.0)          # a constant feature stays at a
+        self.a, self.b = scale_range
 
     def scale(self, rows):
-        return (rows - self.low) / self.span
+        return self.a + (self.b - self.a) * (rows - self.low) / self.span
 
     def unscale_requests(self, values):
         """Back from scaled to real requests (feature 0)."""
-        return values * self.span[0] + self.low[0]
+        return (values - self.a) / (self.b - self.a) * self.span[0] + self.low[0]
 
 
 class NodeData:
     """One node: scaled features on the device, its scaler, and the window starts of each split."""
 
-    def __init__(self, path, window, holiday_days, device):
+    def __init__(self, path, window, holiday_days, device, scale_range=(0.0, 1.0)):
         self.name = os.path.splitext(os.path.basename(path))[0]
         self.minutes, requests = load_node(path)
         table = feature_table(self.minutes, requests, holiday_days)
         self.bounds = split_bounds(len(table))
         first, end = self.bounds["train"]
-        self.scaler = MinMax(table[first:end])
+        self.scaler = MinMax(table[first:end], scale_range)
         self.series = torch.tensor(self.scaler.scale(table), dtype=torch.float32, device=device)
         self.window = window
         # A window starting at s uses minutes s .. s+W-1 and predicts s+W .. s+W+HORIZON-1.
