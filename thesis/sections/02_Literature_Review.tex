@@ -31,7 +31,7 @@ Kotecha et al.~\cite{kotecha2024performance} review federated learning framework
 
 Abdel-Basset et al.~\cite{abdelbasset2024ppfdl} propose PP-FDL, which handles non-IID data and privacy together in fog-assisted IoT. Each fog node uses a generative adversarial network to create private class identifiers that stop attackers from recovering its classes, and the models are combined with FedProx. On MNIST and CIFAR-10, the framework resists inference attacks and outperforms standard federated learning on non-IID data, without the cost of encryption. However, the generative network adds work at every fog node. The evaluation with ten virtual clients does not show how this cost grows as the system scales.
 
-\section{Proactive Autoscaling for Containerized Workloads}\label{sec:lit-autoscaling}
+\section[Proactive Autoscaling for Containerized Workloads]{Proactive Autoscaling for Containerized\\Workloads}\label{sec:lit-autoscaling}
 
 Dogani and Khunjush~\cite{dogani2024} propose FedAvg-BiGRU, a proactive autoscaler for Kubernetes at the edge. Federated learning trains a BiGRU workload predictor across edge nodes, so only model updates travel to the cloud instead of raw workload data. The planner then converts multi-step predictions into a number of pods, using the Cool Down Time (CDT) to avoid contradictory scaling actions. In simulation on FIFA World Cup request traces, the approach reduces under-provisioning compared with the reactive Kubernetes autoscaler, at the cost of more over-provisioning. However, the authors scale pods for containerized web applications and use federated learning only to train the predictor. They do not dynamically allocate CPU for containers running federated learning.
 

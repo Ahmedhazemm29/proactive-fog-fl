@@ -96,6 +96,14 @@
 \setlength\parindent{0pt}
 \setlength\parskip{0.6\baselineskip}
 \raggedbottom
+% No single lines left alone at the top or bottom of a page.
+\clubpenalty=10000
+\widowpenalty=10000
+\displaywidowpenalty=10000
+% Running header: show the chapter on every page, so it never names a section
+% that only starts further down the page and never runs past the margin.
+\renewcommand{\chaptermark}[1]{\markboth{\MakeUppercase{\chaptername\ \thechapter.\ #1}}{\MakeUppercase{\chaptername\ \thechapter.\ #1}}}
+\renewcommand{\sectionmark}[1]{}
 % \setlength\parskip{.5\baselineskip \@plus .1\baselineskip \@minus ..1\baselineskip}
 
 
