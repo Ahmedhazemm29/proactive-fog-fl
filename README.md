@@ -6,11 +6,6 @@
 
 This repository reproduces Dogani & Khunjush (2024), "Proactive auto-scaling technique for web applications in container-based edge computing using federated learning model" (JPDC 187, 104837). A FedAvg-BiGRU model forecasts each edge node's traffic, and a planner adds or removes containers before the load arrives. We test it in a simulation of 16 edge nodes and live, with real Docker containers on one laptop.
 
-Bachelor thesis by Ahmed Hazem, German International University (GIU), Cairo.
-
-Supervisor: Dr. Yasmine Zaghloul
-
-Co-supervisor: Prof. Dr.-Ing. Ansgar Meroth
 
 ---
 
