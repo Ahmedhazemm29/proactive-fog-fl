@@ -1,0 +1,6 @@
+# PlatformIO build output and editor files
+.pio/
+.vscode/
+
+# Wi-Fi password (copy include/secrets.example.h to include/secrets.h)
+include/secrets.h
