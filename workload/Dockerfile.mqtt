@@ -1,0 +1,11 @@
+# Image of the MQTT worker (mqtt_worker.py), built on the Raspberry Pi (arm64)
+# by pi/docker-compose.yml. Same base and ML libraries as the profile workers
+# (Dockerfile), plus an MQTT client and a Prometheus page.
+FROM python:3.11-slim
+# One thread for the math libraries: one training step uses one core, as in
+# workload.py, and extra threads would only fight over the CPU limit.
+ENV PYTHONUNBUFFERED=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
+WORKDIR /app
+RUN pip install --no-cache-dir numpy scikit-learn paho-mqtt==2.1.0 prometheus-client==0.21.1
+COPY mqtt_worker.py .
+CMD ["python", "mqtt_worker.py"]

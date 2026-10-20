@@ -1,0 +1,49 @@
+# Fog node (Raspberry Pi 5, arm64): MQTT worker 1, fed by ESP32 client 1,
+# plus cAdvisor for the same container metrics as on the laptop.
+# The MQTT broker (container "mqtt", port 1883) runs separately on the Pi.
+# Deploy from the laptop with pi/deploy.sh.
+name: fog-node
+
+services:
+  worker-1:
+    build:
+      context: ../workload
+      dockerfile: Dockerfile.mqtt
+    image: thesis/mqtt-worker:latest
+    container_name: fl-worker-1       # same name as on the laptop, so the queries match
+    labels:
+      thesis.role: "worker"
+    # Period/quota (not "cpus"), so a controller can change it later
+    cpu_period: 100000
+    cpu_quota: 100000                 # 1.0 CPU
+    mem_limit: 512m
+    environment:
+      CLIENT_ID: "1"
+      MQTT_HOST: fognode1.local
+      STEPS_PER_MSG: "10"
+    extra_hosts:
+      # .local names (mDNS) don't resolve inside a container. The broker runs
+      # on this Pi, so point the name at the host.
+      - "fognode1.local:host-gateway"
+    ports:
+      - "8000:8000"                   # the worker's /metrics page
+    restart: unless-stopped
+
+  cadvisor:
+    # Newer than the laptop's v0.49.1: Docker 29 on the Pi stores images with
+    # containerd, and v0.49-v0.53 then can't name the containers (no
+    # name="fl-worker-1" label). v0.60.6 can.
+    image: ghcr.io/google/cadvisor:v0.60.6
+    container_name: cadvisor
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
