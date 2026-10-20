@@ -65,11 +65,16 @@ def write_spike(worker, height, duration):
     return spike
 
 
-def apply_named_profile(name, workers=WORKERS):
-    """Give each worker its part of load/profiles/<name>.json."""
+def apply_named_profile(name, workers=WORKERS, offset=0):
+    """
+    Give each worker its part of load/profiles/<name>.json. With an offset
+    (seconds) the profile starts at t = offset instead of 0, for both workers.
+    """
     path = os.path.join(PROFILES_DIR, f"{name}.json")
     with open(path) as f:
         profiles = json.load(f)
+    if offset:
+        profiles = {worker: dict(profile, offset=offset) for worker, profile in profiles.items()}
     return {worker: write_profile(worker, profiles[worker]) for worker in workers}
 
 
@@ -103,6 +108,8 @@ def check(profile):
         problems.append("--min must not be above --max")
     if profile.get("noise", 0) < 0:
         problems.append("--noise must not be negative")
+    if profile.get("offset", 0) < 0:
+        problems.append("offset must not be negative")
     return problems
 
 

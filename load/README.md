@@ -7,3 +7,5 @@ This folder belongs to the earlier part of the thesis. It holds the load profile
 - `profiles/bursts.json`: bursts of full load, 20 s long and 60 s apart, on a base of 0.1.
 - `profiles/steps.json`: 0.2 and 0.9 CPU, swapped between the two workers every 120 s.
 - `profiles/constant.json`: a constant 0.8 and 0.3 CPU.
+
+Any profile may also have `offset` (seconds): it then starts at t = offset instead of 0. `scripts/run_random_windows.py` uses it to run later parts of a profile.

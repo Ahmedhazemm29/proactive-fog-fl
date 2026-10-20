@@ -14,4 +14,5 @@ This folder holds one command-line script per task. Run them from the repo root 
 - `live_run.py`: step 4B, one live run of one scaler.
 - `live_report.py`, `live_windows_report.py`: step 4B, the report of one window and of all windows.
 - `run_experiments.py`, `set_load.py`, `control_page.py`: earlier part, the controller runs and the load of the two workers.
+- `run_random_windows.py`: earlier part, reactive and proactive on the same N random windows of each load profile (each window starts the profile at a seeded random offset).
 - `requirements.txt`: the Python packages of steps 1 to 4A.

@@ -192,13 +192,18 @@ def save_worker_logs(out_dir, run_name, since, until):
                     f.write(line + "\n")
 
 
-def run_one(run, controller, repeat, profile, warmup, run_seconds, out_dir):
-    """Warm up, run one controller, stop it, file its CSV. Returns its runs.csv row."""
+def run_one(run, controller, repeat, profile, warmup, run_seconds, out_dir, offset=0):
+    """
+    Warm up, run one controller, stop it, file its CSV. Returns its runs.csv row.
+    offset (seconds): start the profile at t = offset (scripts/run_random_windows.py).
+    """
+    at = f" at t = {offset} s" if offset else ""
     log(f"run {run}: {controller} #{repeat}. Workers reset to {START_LIMIT} CPU, "
-        f"load profile {profile!r} started, warming up for {warmup} s")
+        f"load profile {profile!r} started{at}, warming up for {warmup} s")
     reset_workers()
     profile_started = time.time()
-    apply_named_profile(profile)  # restarts the profile, so every run gets the same load
+    # Restarts the profile, so every run with the same offset gets the same load
+    apply_named_profile(profile, offset=offset)
     time.sleep(warmup)
 
     output_path = os.path.join(out_dir, f"{controller}_{repeat}_output.txt")

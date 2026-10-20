@@ -20,7 +20,9 @@ Modes and their parameters (times in seconds, levels from 0.0 to 1.0):
 
 Time t of a profile counts from the moment the worker picks it up, so
 setting the same profile again replays it from the start. Seeded modes give
-exactly the same load every time they are replayed.
+exactly the same load every time they are replayed. Any mode may also have
+"offset" (seconds, default 0): t then starts at offset instead of 0, so a
+run sees a later part of the profile (scripts/run_random_windows.py).
 
 Without a load file the worker runs the default 120 s sine wave.
 
@@ -132,6 +134,8 @@ def check_profile(profile):
     for key in ("period", "hold", "gap", "duration"):
         if key in profile and not profile[key] >= 1:
             raise ValueError(f"{key} must be at least 1 second")
+    if not profile.get("offset", 0) >= 0:
+        raise ValueError("offset must not be negative")
     intensity_at(profile, 0.0)  # try it once: missing or wrong values fail here
 
 
@@ -229,7 +233,7 @@ def main():
             print(f"spike: +{spike['height']:.2f} for {spike_left} s")
 
         # 2. How busy to be in this second, logged as ground truth.
-        t = slot_start - profile_start
+        t = slot_start - profile_start + profile.get("offset", 0)
         intensity = intensity_at(profile, t)
         if spike_left > 0:   # a spike is running: add it, to at most one core
             intensity = min(1.0, intensity + spike["height"])

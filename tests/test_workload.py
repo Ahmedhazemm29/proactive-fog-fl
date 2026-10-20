@@ -270,5 +270,40 @@ class SpikeNow(unittest.TestCase):
                     self.worker.check_spike(bad)
 
 
+# ----------------------------------------------------------------------
+# 3. "offset": a profile that starts at a later t (random windows)
+# ----------------------------------------------------------------------
+class Offset(unittest.TestCase):
+
+    def setUp(self):
+        with open(os.path.join(ROOT, "workload", "workload.py")) as f:
+            self.worker = load_worker(f.read(), "workload_now")
+
+    def values(self, profile, seconds):
+        with tempfile.TemporaryDirectory() as folder:
+            load = os.path.join(folder, "fl-worker-1.json")
+            lines = run(self.worker, folder, seconds, {0: lambda: write(load, profile)})
+        return load_values(lines)
+
+    def test_offset_plays_the_later_part_of_the_profile(self):
+        # 0.2 until t = 500, 0.9 until 530, then 0.4. With offset 500 the
+        # worker starts at t = 500, so it never plays the 0.2 part.
+        profile = {"mode": "steps", "steps": [[0, 0.2], [500, 0.9], [530, 0.4]], "offset": 500}
+        values = self.values(profile, 60)
+        self.assertEqual(values[0][0], 500)
+        self.assertGreaterEqual(values[-1][0], 555)
+        # (the fake clock's t can be a fraction of a second off at the step itself)
+        self.assertTrue(all(i == "0.900" for t, _, i in values if t < 529))
+        self.assertTrue(all(i == "0.400" for t, _, i in values if t > 530))
+
+    def test_negative_offset_is_refused(self):
+        with tempfile.TemporaryDirectory() as folder:
+            load = os.path.join(folder, "fl-worker-1.json")
+            lines = run(self.worker, folder, 3,
+                        {0: lambda: write(load, {"mode": "constant", "level": 0.3, "offset": -5})})
+        self.assertIn("offset must not be negative", lines[0])
+        self.assertEqual(load_values(lines)[0][1], "sine")   # kept the default profile
+
+
 if __name__ == "__main__":
     unittest.main()

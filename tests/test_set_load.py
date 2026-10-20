@@ -126,5 +126,19 @@ class Spike(unittest.TestCase):
                 self.assertTrue(stopped.startswith("not changed:"), stopped)
 
 
+class Offset(unittest.TestCase):
+
+    def test_offset_is_added_to_both_workers(self):
+        plain = files_written(set_load, lambda m: m.apply_named_profile("bursts"))
+        shifted = files_written(set_load, lambda m: m.apply_named_profile("bursts", offset=1234))
+        for worker_file in ("fl-worker-1.json", "fl-worker-2.json"):
+            self.assertEqual(json.loads(shifted[worker_file]),
+                             dict(json.loads(plain[worker_file]), offset=1234))
+
+    def test_negative_offset_is_a_problem(self):
+        self.assertEqual(set_load.check({"mode": "constant", "level": 0.5, "offset": -1}),
+                         ["offset must not be negative"])
+
+
 if __name__ == "__main__":
     unittest.main()
