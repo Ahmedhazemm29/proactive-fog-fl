@@ -1,8 +1,55 @@
 # Proactive fog autoscaling with federated learning
 
+## Pipeline (proposed design)
+
+Devices train locally and send protected updates. The fog aggregates them
+securely, which costs CPU that grows with the number of clients, and a
+proactive autoscaler keeps aggregation fast as clients join and leave.
+
+### 1. Edge: ESP32s (start with 5, 3 join or leave)
+- Collect sensor data. Raw data never leaves the device.
+- Train a tiny model locally.
+- Protect the weights (secure aggregation) and publish them over MQTT
+  to the fog.
+
+### 2. Fog: Raspberry Pi 5 (Jetson Orin Nano later as a second fog node)
+- MQTT broker: receives the protected updates.
+- Secure aggregation containers: combine the updates. The fog only sees
+  the combined result, never a single client's update. This is the
+  CPU-heavy part, and it grows with the number of clients.
+- Proactive autoscaler: predicts aggregation demand (for example when
+  clients join) and changes the containers' CPU limits before they
+  slow down.
+
+### 3. Cloud: laptop
+- Combines the fog nodes' models into the global model (once the
+  Jetson joins).
+- Prometheus and Grafana for all measurements.
+- Sends the global model back down to the ESP32s.
+
+### Experiment
+Clients join and leave (5 -> 8 -> 5). Reactive and proactive autoscaling
+are compared on aggregation round time, CPU throttling and wasted CPU.
+
+### Status
+- Built: ESP32 -> MQTT -> Pi link, containers with live CPU limits,
+  reactive and proactive autoscaler (laptop simulation).
+- To build: on-device training, secure aggregation, autoscaler on the
+  Pi, cloud aggregation.
+- To decide: secure aggregation method (masking is light on the ESP32,
+  homomorphic encryption gives more CPU load at the fog).
+
+Note: the current Pi worker (mqtt_worker.py) still receives raw sensor
+data and trains on the fog. It is a load-generation step, not the final
+FL design.
+
+How to run what is built so far: [Fog Node: ESP32 and Raspberry Pi](#fog-node-esp32-and-raspberry-pi).
+
+---
+
 ## Reproducing FedAvg-BiGRU Proactive Autoscaling (Dogani & Khunjush, 2024) on Docker
 
-**Status:** 🚧 Phase 1 (reproduction) nearly complete, Phase 2 (extension) planned
+**Status:** 🚧 Phase 1 (reproduction) nearly complete, Phase 2 (the fog pipeline above) started
 
 This repository reproduces Dogani & Khunjush (2024), "Proactive auto-scaling technique for web applications in container-based edge computing using federated learning model" (JPDC 187, 104837). A FedAvg-BiGRU model forecasts each edge node's traffic, and a planner adds or removes containers before the load arrives. We test it in a simulation of 16 edge nodes and live, with real Docker containers on one laptop.
 
@@ -21,8 +68,7 @@ Dogani's main claim holds. The planner has fewer shortages and scales less often
 
 ![Traffic and running workers of the three scalers in the four live windows](results/autoscaler_live/windows_workers.png)
 
-*Live runs on four 3-hour windows: the traffic in workers (grey) and the workers each scaler ran.
-federated ≈ central*
+*Live runs on four 3-hour windows: the traffic in workers (grey) and the workers each scaler ran.*
 
 ![Real requests of node 0 and the t+3 forecasts of the four models](results/predictors/prediction_node_00.png)
 
@@ -143,7 +189,9 @@ The entries are numbered by step. The part before the dot names the step, and th
 | 4B. Live demo: real traffic against real Docker containers behind HAProxy, on node 0's busiest 3 hours | Done, see [report.md](results/autoscaler_live/report.md) |
 | 4B. Extra windows: the calm, rise and spiky windows, chosen by a fixed rule | Done, see [windows_report.md](results/autoscaler_live/windows_report.md) |
 | Thesis writing | In progress |
-| Phase 2: extension | Planned |
+| Phase 2: ESP32 client, publishes sensor data over MQTT at a rate set live | Done, see [esp32/](esp32/) |
+| Phase 2: Pi fog node, MQTT worker with a live CPU limit, plus cAdvisor | Done, see [pi/](pi/) |
+| Phase 2: on-device training, secure aggregation, autoscaler on the Pi | Planned, see [Pipeline](#pipeline-proposed-design) |
 
 Before the reproduction, the thesis built a testbed for vertical CPU scaling of two containers. Its code and results are in this repo too, see [the earlier part](#earlier-part-vertical-cpu-scaling).
 
@@ -173,8 +221,10 @@ Before the reproduction, the thesis built a testbed for vertical CPU scaling of 
 │   ├── autoscaler_sensitivity/  # step 4A, the sensitivity grid
 │   └── autoscaler_live/       # step 4B, the first window, plus calm/, rise/ and spiky/
 ├── tests/                     # unit tests for every step
+├── esp32/                     # phase 2: ESP32 MQTT client (PlatformIO)
+├── pi/                        # phase 2: the Pi fog node, its compose file and deploy.sh
 ├── controller/                # earlier part: the reactive and proactive CPU controllers
-├── workload/                  # earlier part: the training workload of the two worker containers
+├── workload/                  # earlier part: the training workload of the two workers; also mqtt_worker.py, the Pi's worker
 ├── load/                      # earlier part: named load profiles for those workers
 ├── analysis/                  # earlier part: scripts that compare the controller runs
 ├── figures/                   # earlier part: PDF figures of the first controller runs
@@ -182,7 +232,7 @@ Before the reproduction, the thesis built a testbed for vertical CPU scaling of 
                                # traces, the model weights and the raw data of every run; Quick Start rebuilds it
 ```
 
-Each folder has a README with its file list: [docs/](docs/), [scripts/](scripts/), [predictors/](predictors/), [autoscaler/](autoscaler/), [live/](live/), [monitoring/](monitoring/), [results/](results/), [tests/](tests/), [controller/](controller/), [workload/](workload/), [load/](load/), [analysis/](analysis/) and [figures/](figures/). The top-level files are [README.md](README.md), [.gitignore](.gitignore) and [docker-compose.yml](docker-compose.yml).
+Each folder has a README with its file list: [docs/](docs/), [scripts/](scripts/), [predictors/](predictors/), [autoscaler/](autoscaler/), [live/](live/), [monitoring/](monitoring/), [results/](results/), [tests/](tests/), [esp32/](esp32/), [pi/](pi/), [controller/](controller/), [workload/](workload/), [load/](load/), [analysis/](analysis/) and [figures/](figures/). The top-level files are [README.md](README.md), [.gitignore](.gitignore) and [docker-compose.yml](docker-compose.yml).
 
 ---
 
@@ -287,6 +337,39 @@ Grafana runs at http://localhost:3000 and Prometheus at http://localhost:9090.
 
 ---
 
+## Fog Node: ESP32 and Raspberry Pi
+
+The built part of the pipeline: an ESP32 publishes sensor values over MQTT, and a worker container on the Pi trains on them, so its CPU demand follows the ESP32's publish rate. The Pi is `pi5@fognode1.local` (Raspberry Pi 5, 4 GB, arm64). The MQTT broker (Mosquitto, container `mqtt`, port 1883) runs on the Pi and is not part of this repo.
+
+**ESP32** ([esp32/](esp32/), PlatformIO):
+
+```bash
+cd esp32
+cp include/secrets.example.h include/secrets.h      # then fill in WIFI_SSID and WIFI_PASSWORD
+pio run -t upload                                    # client 1, on /dev/ttyUSB0
+PLATFORMIO_BUILD_FLAGS="-DCLIENT_ID=2" pio run -t upload   # another client id
+pio device monitor                                   # serial log, 115200 baud
+```
+
+It finds the broker as `fognode1.local` (mDNS), publishes JSON on `fog/client<ID>/data` and reconnects by itself.
+
+**Pi** ([pi/](pi/)): from the repo root on the laptop,
+
+```bash
+pi/deploy.sh      # copies only the worker files to ~/fog on the Pi, builds the image there and starts it
+```
+
+This starts `fl-worker-1` (`workload/mqtt_worker.py`, 1.0 CPU, metrics on port 8000) and cAdvisor v0.60.6 (port 8080). Then change the ESP32's publish rate (1 to 50 messages/s) and watch the worker's CPU follow:
+
+```bash
+ssh pi5@fognode1.local "docker exec mqtt mosquitto_pub -t fog/client1/control -m 30"
+ssh pi5@fognode1.local "docker stats --no-stream fl-worker-1"
+```
+
+Measured with 10 training steps per message: 1.5% CPU at 1 message/s, 26 to 34% at 30 messages/s. The Pi's kernel has memory cgroups off, so `mem_limit` is ignored there; the CPU limit works.
+
+---
+
 ## Technical Stack
 
 | Layer | Technology | Detail |
@@ -300,6 +383,8 @@ Grafana runs at http://localhost:3000 and Prometheus at http://localhost:9090.
 | Load generator | Python asyncio | Open loop with 6,000 keep-alive connections |
 | Metrics | cAdvisor v0.49.1, Prometheus v2.53.0 | Container CPU, scraped every 5 s |
 | Dashboards | Grafana 11.1.0 | The live dashboard `autoscaler-live` |
+| Edge client | ESP32, PlatformIO, PubSubClient 2.8 | MQTT client with a live publish rate, broker found with mDNS |
+| Fog node | Raspberry Pi 5, Mosquitto, cAdvisor v0.60.6 | MQTT worker with paho-mqtt and prometheus-client, 1.0 CPU |
 
 ---
 
@@ -312,6 +397,14 @@ Two containers share one CPU while they train a small model. A reactive and a pr
 *Sine load for 8 minutes: no controller for the first 2 (limits flat at 0.5), then the proactive controller for 3 (limits swing between 0.1 and 0.9 with the waves), then the reactive one for 3 (late steps of 0.1, between 0.3 and 0.7).*
 
 - **Results:** [results/profiles_summary.md](results/profiles_summary.md).
+- **Random windows:** the same comparison on 10 random windows per profile, each starting the profile at a seeded random offset, reactive and proactive on the same load. Run (about 11 h) and analyse:
+
+  ```bash
+  mkdir -p data/runs/random_windows
+  nohup .venv/bin/python scripts/run_random_windows.py > /dev/null 2>> data/runs/random_windows/runner.err &
+  tail -f data/runs/random_windows/*/runner.log      # progress
+  .venv/bin/python analysis/random_windows.py         # writes results/random_windows/summary.md
+  ```
 - **Demo guide:** [docs/demo.md](docs/demo.md).
 - **Concepts:** [docs/concepts.md](docs/concepts.md).
 
