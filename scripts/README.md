@@ -6,6 +6,7 @@ This folder holds one command-line script per task. Run them from the repo root 
 - `synthetic_traces.py`: step 2, the 16 synthetic node traces.
 - `train_predictors.py`: step 3, trains and compares the predictors.
 - `predictor_seeds.py`: step 3, the Table 8 seed check, from the runs in `results/predictors/seeds/`.
+- `table8_random_windows.py`: step 3, the Table 8 models on random windows of the test part, no retraining.
 - `predictor_gap.py`, `predictor_experiments.py`, `mape_readings.py`: step 3, checks on the gap to Dogani's MAPE, single training experiments and every way to compute MAPE.
 - `simulate_autoscaler.py`: step 4A, the simulation of the three scalers.
 - `autoscaler_sensitivity.py`: step 4A, the sensitivity grid.
