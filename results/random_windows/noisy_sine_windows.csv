@@ -1,0 +1,11 @@
+profile,window,offset_s,seed,reactive_steps_s,proactive_steps_s,gain_pct
+noisy_sine,1,3240,1,294.42,410.84,39.54
+noisy_sine,2,774,1,323.94,415.63,28.30
+noisy_sine,3,527,1,314.03,409.02,30.25
+noisy_sine,4,1995,1,322.21,400.63,24.34
+noisy_sine,5,698,1,292.87,404.34,38.06
+noisy_sine,6,1513,1,318.38,404.72,27.12
+noisy_sine,7,1062,1,342.51,409.71,19.62
+noisy_sine,8,2581,1,308.91,409.87,32.68
+noisy_sine,9,1978,1,317.93,406.59,27.89
+noisy_sine,10,1948,1,324.34,399.84,23.28

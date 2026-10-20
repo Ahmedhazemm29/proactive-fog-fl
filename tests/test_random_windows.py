@@ -16,6 +16,7 @@ import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
+from unittest import mock
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
@@ -130,16 +131,17 @@ class Analysis(unittest.TestCase):
             os.mkdir(os.path.join(runs, "bursts"))
             self.make_profile(os.path.join(runs, "bursts"))
             argv = ["random_windows.py", "--runs-dir", runs, "--results-dir", results]
-            with unittest.mock.patch.object(sys, "argv", argv), \
-                    unittest.mock.patch("builtins.print"):
+            with mock.patch.object(sys, "argv", argv), \
+                    mock.patch("builtins.print"):
                 random_windows.main()
             with open(os.path.join(results, "summary.md")) as f:
                 summary = f.read()
             with open(os.path.join(results, "bursts_windows.csv")) as f:
                 rows = list(csv.DictReader(f))
             figures = sorted(os.listdir(os.path.join(results, "figures")))
+        # (the last column, the fixed-window gain, comes from results/bursts/comparison.md)
         self.assertIn("| bursts | 2 | 100.0 ± 0.0 | 120.0 ± 42.4 | +20.0% | -10.0% | +50.0% | "
-                      "1 of 2 |", summary)
+                      "1 of 2 | +20.0% |", summary)
         self.assertEqual([(r["window"], r["seed"], r["gain_pct"]) for r in rows],
                          [("1", "1", "50.00"), ("2", "1", "-10.00")])
         self.assertEqual(figures, ["bursts_boxplot.pdf", "bursts_boxplot.png"])

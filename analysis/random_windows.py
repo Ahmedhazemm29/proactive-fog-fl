@@ -23,6 +23,7 @@ Usage:  python analysis/random_windows.py
 import argparse
 import csv
 import os
+import re
 import statistics
 import sys
 from datetime import datetime
@@ -120,6 +121,9 @@ def summarize(windows):
            for c in CONTROLLERS},
         "gain_mean": statistics.mean(gains),
         "gain_sd": sd(gains),
+        # The earlier reports (compare_runs.py) give the gain of the means instead
+        "gain_of_means": (statistics.mean(w["proactive"] for w in windows)
+                          / statistics.mean(w["reactive"] for w in windows) - 1) * 100,
         "gain_min": min(gains),
         "gain_max": max(gains),
         "wins": sum(w["proactive"] > w["reactive"] for w in windows),
@@ -149,20 +153,40 @@ def profile_tables(profile, windows, s):
     return lines + [""]
 
 
+FIXED_GAIN = re.compile(r"^\| Training speed \(steps/s\) \|.*\(([+-]\d+)%\) \|$", re.M)
+
+
+def fixed_window_gain(profile):
+    """
+    The training-speed gain of the earlier fixed-window runs (profile from
+    t = 0), as text like "+26%", from results/<profile>/comparison.md; "-" if missing.
+    """
+    try:
+        with open(os.path.join(ROOT, "results", profile, "comparison.md")) as f:
+            match = FIXED_GAIN.search(f.read())
+    except FileNotFoundError:
+        return "-"
+    return f"{match.group(1)}%" if match else "-"
+
+
 def write_summary(path, results):
     lines = ["# Random windows: proactive vs reactive", "",
              "Written by `analysis/random_windows.py` from the runs of "
              "`scripts/run_random_windows.py`. Each window starts its load profile at a "
              "random offset; reactive and proactive run on the same window (paired), "
-             "gain = (proactive - reactive) / reactive per window.", "",
+             "gain = (proactive - reactive) / reactive per window. \"Gain of means\" is "
+             "computed like the earlier reports (proactive mean / reactive mean), so it "
+             "compares directly with the fixed window: all earlier runs started the "
+             "profile at t = 0 (`results/<profile>/comparison.md`).", "",
              "| Profile | Windows | Reactive (steps/s) | Proactive (steps/s) | Mean gain | "
-             "Min gain | Max gain | Proactive faster |",
-             "|---|---|---|---|---|---|---|---|"]
+             "Min gain | Max gain | Proactive faster | Gain of means | Fixed window |",
+             "|---|---|---|---|---|---|---|---|---|---|"]
     for profile, (windows, s) in results.items():
         lines.append(f"| {profile} | {s['n']} | {s['reactive'][0]:.1f} ± {s['reactive'][1]:.1f} | "
                      f"{s['proactive'][0]:.1f} ± {s['proactive'][1]:.1f} | "
                      f"{s['gain_mean']:+.1f}% | {s['gain_min']:+.1f}% | {s['gain_max']:+.1f}% | "
-                     f"{s['wins']} of {s['n']} |")
+                     f"{s['wins']} of {s['n']} | {s['gain_of_means']:+.1f}% | "
+                     f"{fixed_window_gain(profile)} |")
     lines.append("")
     for profile, (windows, s) in results.items():
         lines += profile_tables(profile, windows, s)
