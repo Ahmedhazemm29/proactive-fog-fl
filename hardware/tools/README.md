@@ -1,8 +1,34 @@
 # ESP32 helper tools
 
-Both scripts use only the Python standard library. Run them from the repo
-root. Neither contains a password: Wi-Fi details stay in the FL project's
+All scripts use only the Python standard library. Run them from the repo
+root. None contains a password: Wi-Fi details stay in the FL project's
 git-ignored `secrets.h`, and the MQTT broker needs no login.
+`fl_control.py` is the only laptop tool that publishes on the broker.
+
+## fl_control.py
+
+Join and leave for the ESP32 FL clients. Every board starts in standby
+(connected, out of the rounds):
+
+```
+python3 hardware/tools/fl_control.py join ESP-1 ESP-2 ESP-3 ESP-4
+python3 hardware/tools/fl_control.py leave ESP-5
+python3 hardware/tools/fl_control.py status
+```
+
+- `join` / `leave` send the command to each board's `fog/<id>/control`, with
+  QoS 1 and never retained. Then they wait up to `--timeout` seconds (default 5)
+  for each board's fresh status (`online-active` or `online-standby`) and print
+  for each board whether it confirmed. A join takes effect from the next round,
+  a leave at once. Exit code 0 means every board confirmed.
+- `status` only reads: the current run and round, every board's stored status,
+  and a warning if a command is stored on a control topic (it must never be).
+- Board names map to FL IDs through `hardware/esp_clients.md`.
+- Every command is logged with its local time and epoch to
+  `data/fl-runs/control.csv` of the main checkout. While a run is going on it
+  also goes to that run's `data/fl-runs/<date>_<run>/control.csv`. Commands
+  sent before a run starts get into the run's folder when `pi/pull_runs.py`
+  copies the run. That way joins and leaves can be lined up with the CPU load later.
 
 ## mqtt_watch.py
 
@@ -27,16 +53,17 @@ Flashes the FL firmware onto one board and checks that it comes back online:
 2. Subscribes to `fog/<id>/status` with `mqtt_watch.py`.
 3. Flashes the PlatformIO env (default `fl`). The flashing tool must report
    the same MAC.
-4. Waits up to 90 s for a fresh `online` that arrives after the flash. A
-   retained `online` doesn't count, because the broker keeps it from
-   the board's previous session.
+4. Waits up to 90 s for a fresh online status that arrives after the flash:
+   `online-standby` (the FL firmware always starts in standby), or plain
+   `online` from the older firmware. A retained status doesn't count, because
+   the broker keeps it from the board's previous session.
 
 The FL ID is `esp32-<last 2 bytes of the MAC>`, as in the firmware. For
-example, for ESP-1 with the FL project from PR #35 checked out in
-`../Autoscaling-fl`:
+example, for ESP-1 with the FL firmware in `esp32/` (it needs its git-ignored
+`esp32/include/secrets.h`):
 
 ```
-python3 hardware/tools/fl_flash_one.py ESP-1 1c:c3:ab:ba:8a:50 /dev/ttyUSB0 --project ../Autoscaling-fl/esp32
+python3 hardware/tools/fl_flash_one.py ESP-1 1c:c3:ab:ba:8a:50 /dev/ttyUSB0 --project esp32
 ```
 
 `/dev/ttyUSB` numbers change on replug, so give the MAC from

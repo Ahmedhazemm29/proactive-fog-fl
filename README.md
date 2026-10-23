@@ -344,18 +344,20 @@ Grafana runs at http://localhost:3000 and Prometheus at http://localhost:9090.
 
 The built part of the pipeline. The Pi is `pi5@fognode1.local` (Raspberry Pi 5, 4 GB, arm64). The MQTT broker (Mosquitto, container `mqtt`, port 1883) runs on the Pi and is not part of this repo. The ESP32s find it as `fognode1.local` (mDNS) and reconnect by themselves.
 
-**Federated learning** (first version, no secure aggregation yet). Every ESP32 makes its own time series, which never leaves the board, and trains a tiny model on it: linear regression that predicts the next value from the last 4. The aggregator on the Pi runs the rounds: it publishes the global model, collects the clients' updates and averages them weighted by their number of samples (FedAvg). Clients that join or leave are seen through their status messages and the MQTT Last Will. Details: [esp32/README.md](esp32/README.md) and [pi/README.md](pi/README.md).
+**Federated learning** (first version, no secure aggregation yet). Every ESP32 makes its own time series, which never leaves the board, and trains a tiny model on it: linear regression that predicts the next value from the last 4. The aggregator on the Pi runs the rounds: it publishes the global model, collects the active clients' updates and averages them weighted by their number of samples (FedAvg). Every board starts in standby; `join` and `leave` commands from the laptop switch boards in and out of the rounds (a join from the next round, a leave at once). Boards that drop are seen through the MQTT Last Will. Details: [esp32/README.md](esp32/README.md), [pi/README.md](pi/README.md) and [hardware/tools/README.md](hardware/tools/README.md).
 
 ```bash
 cd esp32
 cp include/secrets.example.h include/secrets.h      # then fill in WIFI_SSID and WIFI_PASSWORD
 pio run -t upload --upload-port /dev/ttyUSB0         # the same firmware on every board; the ID comes from the MAC
 cd ..
-FL_ROUNDS=5 FL_MIN_CLIENTS=6 pi/deploy.sh            # aggregator on the Pi: 5 rounds once 6 clients are online
+python3 hardware/tools/fl_control.py join ESP-1 ESP-2 ESP-3 ESP-4   # these 4 take part
+FL_ROUNDS=5 FL_MIN_CLIENTS=4 pi/deploy.sh --wait     # 5 rounds once 4 clients are active; then the data comes to data/fl-runs/
+python3 hardware/tools/fl_control.py leave ESP-2     # during a run, from another terminal
 ssh pi5@fognode1.local "docker logs fl-aggregator"   # one line per round
 ```
 
-To watch a run live in the browser, start `python3 fl_dashboard/dashboard.py --rounds 5` and open http://127.0.0.1:8766. The page shows the boards, the round, the loss per round and one row per round. It is read-only: it only listens to the broker. See [fl_dashboard/README.md](fl_dashboard/README.md).
+To watch a run live in the browser, start `python3 fl_dashboard/dashboard.py` and open http://127.0.0.1:8766. The page shows the boards (active, standby, offline), the round, the loss per round with the joins and leaves marked, and one row per round. It is read-only: it only listens to the broker. See [fl_dashboard/README.md](fl_dashboard/README.md).
 
 First test (2026-10-22, 5 boards, the broker and aggregator on the laptop because the Pi was offline): all 5 clients took part in all 5 rounds, a round took 0.14 to 0.36 s, local training 3.5 to 4.5 ms on the ESP32, and the global model's loss on the clients' data fell every round, from 0.942 to 0.033, 0.021, 0.018 and 0.017.
 

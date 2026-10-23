@@ -9,12 +9,20 @@
 //   - Model: linear regression that predicts the next value from the last 4
 //     (4 weights and a bias), trained on the board with SGD.
 //
+// Modes: an active board trains in every round; a standby board stays
+// connected but out of the rounds. Every board starts in standby after a
+// reboot, always. A reconnect (e.g. after a Wi-Fi drop) keeps the mode.
+//
 // Protocol (MQTT on fognode1.local:1883, messages in JSON):
-//   fog/<id>/status   "online" (retained) after every connect. The broker
+//   fog/<id>/status   after every connect and every command, retained:
+//                     "online-standby" or "online-active". The broker
 //                     publishes "offline" (retained, the Last Will) when the
 //                     board disappears, so the fog sees leaves.
+//   fog/<id>/control  "join" or "leave" from hardware/tools/fl_control.py,
+//                     never retained. A join takes effect from the next
+//                     round, a leave at once.
 //   fog/global/model  from the aggregator, retained:
-//                     {"run":1792900000,"round":3,"weights":[b,w1,w2,w3,w4]}
+//                     {"run":1792900000,"round":3,"rounds":5,"weights":[b,w1,w2,w3,w4]}
 //   fog/<id>/update   to the aggregator, after local training:
 //                     {"run":...,"round":3,"weights":[...],"num_samples":236,
 //                      "loss":0.0123,"loss_before":0.0456}
@@ -53,6 +61,14 @@ FogLink fog(mqtt);         // Wi-Fi, broker lookup and MQTT reconnects
 String clientId;        // esp32-<last 4 hex of the MAC>
 String statusTopic;     // fog/<id>/status
 String updateTopic;     // fog/<id>/update
+String controlTopic;    // fog/<id>/control
+
+// The mode: false = standby (the start, always), true = active
+bool active = false;
+
+// A "join" or "leave" from the MQTT callback, handled in loop() (see below)
+enum Command { NO_COMMAND, JOIN, LEAVE };
+Command pendingCommand = NO_COMMAND;
 
 // Local data
 float series[MAX_POINTS];
@@ -70,6 +86,11 @@ float pendingWeights[NUM_WEIGHTS];
 // The last round this board trained, so a repeated message is skipped
 uint32_t lastRun = 0;
 long lastRound = -1;
+
+// The newest global model seen, also in standby, so a join can skip the
+// round that is already running
+uint32_t seenRun = 0;
+long seenRound = -1;
 
 // ---- Random numbers (deterministic per board) ----
 
@@ -220,8 +241,8 @@ void runRound() {
                 pendingRound, lossBefore, loss, trainingUs, ok ? "sent" : "FAILED");
 }
 
-// Called by PubSubClient for every message on fog/global/model.
-void onMessage(char* topic, byte* payload, unsigned int length) {
+// A message on fog/global/model. Standby boards only note the round.
+void onModel(byte* payload, unsigned int length) {
   if (length == 0) {
     return;   // the aggregator cleared the retained model
   }
@@ -238,6 +259,11 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
   }
   uint32_t run = doc["run"];
   long round = doc["round"];
+  seenRun = run;
+  seenRound = round;
+  if (!active) {
+    return;   // standby: stay out of the rounds
+  }
   if (run == lastRun && round <= lastRound) {
     return;   // already trained (e.g. the retained model again after a reconnect)
   }
@@ -249,11 +275,61 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
   roundPending = true;
 }
 
-// After every (re)connect: say "online" and listen for the global model.
+// A message on fog/<id>/control. Anything but "join" or "leave" is ignored,
+// also the empty message that clears a stored command (see onConnect).
+void onCommand(byte* payload, unsigned int length) {
+  if (length == 4 && memcmp(payload, "join", 4) == 0) {
+    pendingCommand = JOIN;
+  } else if (length == 5 && memcmp(payload, "leave", 5) == 0) {
+    pendingCommand = LEAVE;
+  }
+}
+
+// Called by PubSubClient for every message: the global model or a command.
+void onMessage(char* topic, byte* payload, unsigned int length) {
+  if (controlTopic == topic) {
+    onCommand(payload, length);
+  } else {
+    onModel(payload, length);
+  }
+}
+
+// Reports the mode on fog/<id>/status (retained).
+void publishStatus() {
+  mqtt.publish(statusTopic.c_str(), active ? "online-active" : "online-standby", true);
+}
+
+// Switches the mode. A join takes effect from the next round: the round that
+// is already running counts as done, so its model is not trained. A leave
+// takes effect at once, also for a round not trained yet. The status is sent
+// after every command, so the sender always gets an answer.
+void applyCommand(Command command) {
+  if (command == JOIN && !active) {
+    active = true;
+    lastRun = seenRun;
+    lastRound = seenRound;
+  } else if (command == LEAVE) {
+    active = false;
+    roundPending = false;
+  }
+  publishStatus();
+  Serial.printf("[fl] %s: now %s\n", command == JOIN ? "join" : "leave",
+                active ? "active" : "standby");
+}
+
+// After every (re)connect: clear a stored command, listen for commands and
+// the global model, and report the mode.
 void onConnect() {
-  mqtt.publish(statusTopic.c_str(), "online", true);   // retained
+  // A command must never be stored (retained) on the broker, or a rebooted
+  // board would get it again and rejoin by itself. PubSubClient can't tell a
+  // stored message from a new one, so the board deletes any stored command
+  // (an empty retained message) before it subscribes to its control topic.
+  mqtt.publish(controlTopic.c_str(), "", true);
+  mqtt.subscribe(controlTopic.c_str(), 1);
   mqtt.subscribe(MODEL_TOPIC, 1);
-  Serial.printf("[fl] online, waiting for rounds on %s\n", MODEL_TOPIC);
+  publishStatus();
+  Serial.printf("[fl] online, %s; commands on %s, rounds on %s\n",
+                active ? "active" : "standby", controlTopic.c_str(), MODEL_TOPIC);
 }
 
 // ---- Arduino entry points ----
@@ -265,7 +341,8 @@ void setup() {
   clientId = clientIdFromMac();
   statusTopic = "fog/" + clientId + "/status";
   updateTopic = "fog/" + clientId + "/update";
-  Serial.printf("\n[boot] FL client %s\n", clientId.c_str());
+  controlTopic = "fog/" + clientId + "/control";
+  Serial.printf("\n[boot] FL client %s, standby\n", clientId.c_str());
 
   makeLocalData();
 
@@ -278,6 +355,10 @@ void setup() {
 void loop() {
   if (!fog.update()) {
     return;
+  }
+  if (pendingCommand != NO_COMMAND) {
+    applyCommand(pendingCommand);
+    pendingCommand = NO_COMMAND;
   }
   if (roundPending) {
     roundPending = false;

@@ -14,6 +14,8 @@
   --offline-bg: #ffebe9;
   --unknown: #6e7781;
   --unknown-bg: #eaeef2;
+  --standby: #9a6700;
+  --standby-bg: #fff8c5;
   --badge-text: #ffffff;
   --global: #0969da;
   --avg: #bf3989;
@@ -34,6 +36,8 @@
     --offline-bg: rgba(248, 81, 73, 0.16);
     --unknown: #9198a1;
     --unknown-bg: rgba(110, 118, 129, 0.2);
+    --standby: #d29922;
+    --standby-bg: rgba(187, 128, 9, 0.18);
     --badge-text: #0d1117;
     --global: #4493f8;
     --avg: #f778ba;
@@ -115,7 +119,8 @@ main {
   border-radius: 12px;
   padding: 14px 16px;
 }
-.board.online { background: var(--online-bg); border-left-color: var(--online); }
+.board.active { background: var(--online-bg); border-left-color: var(--online); }
+.board.standby { background: var(--standby-bg); border-left-color: var(--standby); }
 .board.offline { background: var(--offline-bg); border-left-color: var(--offline); }
 .board-name { font-size: clamp(1.4rem, 2.2vw, 1.8rem); font-weight: 700; line-height: 1.1; }
 .board-id { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); }
@@ -131,7 +136,8 @@ main {
   color: var(--badge-text);
   background: var(--unknown);
 }
-.badge.online { background: var(--online); }
+.badge.active { background: var(--online); }
+.badge.standby { background: var(--standby); }
 .badge.offline { background: var(--offline); }
 .board-detail { font-size: 0.9rem; color: var(--muted); }
 .legend { margin-top: 10px; font-size: 0.9rem; }

@@ -3,20 +3,30 @@ FL aggregator on the fog node (Raspberry Pi): FedAvg over the ESP32 clients.
 
 First version, without secure aggregation: the aggregator sees every client's
 weights. The clients (esp32/src/fl/main.cpp) talk MQTT:
-    fog/<id>/status   "online" or "offline" (retained; "offline" is the clients' Last Will)
+    fog/<id>/status   "online-standby" or "online-active" (retained); "offline" is
+                      the clients' Last Will. The old firmware's plain "online"
+                      counts as active.
+    fog/<id>/control  "join" or "leave" from hardware/tools/fl_control.py, never
+                      retained. Every board starts in standby.
     fog/<id>/update   {"run", "round", "weights", "num_samples", "loss", "loss_before"}
-The aggregator publishes, retained so that a client that joins late gets it too:
-    fog/global/model  {"run", "round", "weights"}
+The aggregator publishes:
+    fog/global/model  {"run", "round", "rounds", "weights"}, retained so that a
+                      client that connects late gets it too
+    fog/global/round  for the dashboard (fl_dashboard/), not retained:
+                      {"phase": "start", "run", "round", "rounds", "participants"}
+                      {"phase": "end", ...the round's results, see round_summary()}
 
 Each round:
-    1. wait until at least MIN_CLIENTS clients are online
-    2. publish the global model with the round number
-    3. wait for an update from every online client, at most ROUND_TIMEOUT_S
-       seconds; a client that goes offline is no longer waited for
-    4. FedAvg: the new global weights are the clients' weights averaged,
+    1. wait until at least MIN_CLIENTS clients are active
+    2. the clients active now are the round's participants; a client that
+       joins later waits for the next round
+    3. publish the global model with the round number
+    4. wait for an update from every participant, at most ROUND_TIMEOUT_S
+       seconds; a participant that leaves or goes offline is dropped from the
+       round at once, together with its update if it already sent one
+    5. FedAvg: the new global weights are the participants' weights averaged,
        weighted by their num_samples
-    5. log the round, the clients, the round time and the losses, then go on
-       with the next round
+    6. log the round, then go on with the next round
 After ROUNDS rounds (0 = no limit) it clears the retained model and stops.
 
 "run" is the aggregator's start time. Clients train again when the run
@@ -26,9 +36,11 @@ Losses (mean squared error on the clients' own data, weighted by num_samples):
     global loss   of the global model sent in this round (before local training)
     avg loss      of the clients' models after local training
 
-Logs: one line per round on stdout, and CSV files in DATA_DIR:
+Logs: one line per round on stdout, and one folder per run, DATA_DIR/<run>/:
     rounds.csv    one row per round
     updates.csv   one row per client update
+One folder per run, so a new column never ends up under an older file's
+header. Runs from before join/leave are in DATA_DIR/rounds.csv and updates.csv.
 """
 import csv
 import json
@@ -42,13 +54,18 @@ import paho.mqtt.client as mqtt
 MQTT_HOST = os.getenv("MQTT_HOST", "fognode1.local")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 ROUNDS = int(os.getenv("ROUNDS", "0"))                   # 0 = keep going
-MIN_CLIENTS = int(os.getenv("MIN_CLIENTS", "1"))
+MIN_CLIENTS = int(os.getenv("MIN_CLIENTS", "1"))         # active clients needed for a round
 ROUND_TIMEOUT_S = float(os.getenv("ROUND_TIMEOUT_S", "10"))
 PAUSE_S = float(os.getenv("PAUSE_S", "1"))               # between two rounds
 DATA_DIR = os.getenv("DATA_DIR", "/data")
 
 MODEL_TOPIC = "fog/global/model"
+ROUND_TOPIC = "fog/global/round"
 NUM_WEIGHTS = 5                                          # bias + 4 weights
+
+# Statuses that mean "takes part in the rounds". Plain "online" comes from the
+# old firmware without join/leave, which always trained.
+ACTIVE_STATUSES = ("online-active", "online")
 
 
 # ----------------------------------------------------------------------
@@ -84,7 +101,59 @@ def weighted_mean(updates, key):
 
 
 # ----------------------------------------------------------------------
-# Who is online, and the updates of the current round
+# One round's results: the log line, rounds.csv and fog/global/round
+# ----------------------------------------------------------------------
+def round_summary(run, number, rounds, participants, updates, missed, dropped, seconds):
+    """
+    The round's results as plain JSON types. participants: the clients active
+    when the round started; updates: participant -> update of those that
+    answered (and stayed); missed: still active but no update in time;
+    dropped: left or went offline during the round. Losses are None when
+    nobody answered.
+    """
+    used = list(updates.values())
+    return {
+        "run": run, "round": number, "rounds": rounds,
+        "participants": sorted(participants), "answered": sorted(updates),
+        "missed": sorted(missed), "dropped": sorted(dropped),
+        "round_s": round(seconds, 3),
+        "global_loss": weighted_mean(used, "loss_before") if used else None,
+        "avg_loss": weighted_mean(used, "loss") if used else None,
+    }
+
+
+def log_line(summary):
+    """The round's line on stdout."""
+    def loss(value):
+        return "nan" if value is None else f"{value:.4f}"
+
+    note = ""
+    if summary["missed"]:
+        note += f", no update from {', '.join(summary['missed'])}"
+    if summary["dropped"]:
+        note += f", left during the round: {', '.join(summary['dropped'])}"
+    return (f"round {summary['round']}: {len(summary['answered'])} of "
+            f"{len(summary['participants'])} active clients, {summary['round_s']:.2f} s, "
+            f"global loss {loss(summary['global_loss'])}, avg loss {loss(summary['avg_loss'])}{note}")
+
+
+def rounds_row(summary, weights):
+    """The round's row of rounds.csv. active: participants when the round started."""
+    nan = float("nan")
+    return {
+        "run": summary["run"], "round": summary["round"],
+        "time": datetime.now().isoformat(timespec="seconds"),
+        "active": len(summary["participants"]), "clients": len(summary["answered"]),
+        "missed": len(summary["missed"]), "dropped": len(summary["dropped"]),
+        "round_s": summary["round_s"],
+        "global_loss": nan if summary["global_loss"] is None else summary["global_loss"],
+        "avg_loss": nan if summary["avg_loss"] is None else summary["avg_loss"],
+        "weights": json.dumps(weights),
+    }
+
+
+# ----------------------------------------------------------------------
+# Who is active, and the current round
 # ----------------------------------------------------------------------
 class RoundState:
     """
@@ -95,45 +164,62 @@ class RoundState:
     def __init__(self, run):
         self.run = run
         self.round = 0
-        self.online = set()
-        self.updates = {}               # client -> update, current round only
+        self.active = set()             # clients that take part in the rounds
+        self.participants = set()       # the clients active when this round started
+        self.dropped = set()            # participants that left during this round
+        self.updates = {}               # participant -> update, this round only
         self.changed = threading.Condition()
 
     def on_status(self, client, text):
+        """A status message. Returns True if the client became active or stopped being active."""
         with self.changed:
-            if text == "online":
-                self.online.add(client)
-            else:                       # "offline", or the retained status was cleared
-                self.online.discard(client)
+            was_active = client in self.active
+            if text in ACTIVE_STATUSES:
+                self.active.add(client)     # takes part from the next round on
+            else:                           # "online-standby", "offline", or the status was cleared
+                self.active.discard(client)
+                if client in self.participants:
+                    # Left during the round: no more waiting for it, and its update is dropped too
+                    self.participants.discard(client)
+                    self.updates.pop(client, None)
+                    self.dropped.add(client)
             self.changed.notify_all()
+            return was_active != (client in self.active)
 
     def on_update(self, client, update):
-        """Keep an update of the current round; returns False for an old or foreign one."""
+        """Keep a participant's update of the current round; returns False for any other."""
         with self.changed:
-            if update.get("run") != self.run or update.get("round") != self.round:
+            if (update.get("run") != self.run or update.get("round") != self.round
+                    or client not in self.participants):
                 return False
             self.updates[client] = update
-            self.online.add(client)     # it sent an update, so it is online
             self.changed.notify_all()
             return True
 
     def start_round(self, number):
+        """A new round: the clients active now are its participants. Returns them."""
         with self.changed:
             self.round = number
+            self.participants = set(self.active)
+            self.dropped = set()
             self.updates = {}
+            return set(self.participants)
 
     def missing(self):
-        """Online clients without an update in this round."""
-        return self.online - set(self.updates)
+        """Participants without an update in this round."""
+        return self.participants - set(self.updates)
 
     def wait_for_clients(self, count):
         with self.changed:
-            while len(self.online) < count:
-                print(f"waiting for clients: {len(self.online)} of {count} online", flush=True)
+            while len(self.active) < count:
+                print(f"waiting for clients: {len(self.active)} of {count} active", flush=True)
                 self.changed.wait(timeout=10)
 
     def wait_for_updates(self, timeout):
-        """Wait until every online client has sent its update, or the timeout. Returns the updates."""
+        """
+        Wait until every participant has answered or left, or the timeout.
+        Returns (updates, missed, dropped).
+        """
         deadline = time.monotonic() + timeout
         with self.changed:
             while self.missing():
@@ -141,7 +227,7 @@ class RoundState:
                 if left <= 0:
                     break
                 self.changed.wait(timeout=left)
-            return dict(self.updates), set(self.missing())
+            return dict(self.updates), set(self.missing()), set(self.dropped)
 
 
 # ----------------------------------------------------------------------
@@ -163,7 +249,8 @@ def main():
     run = int(time.time())
     state = RoundState(run)
     weights = [0.0] * NUM_WEIGHTS       # round 1 starts from zeros
-    os.makedirs(DATA_DIR, exist_ok=True)
+    run_dir = os.path.join(DATA_DIR, str(run))
+    os.makedirs(run_dir, exist_ok=True)
 
     def on_connect(client, userdata, flags, reason_code, properties):
         if reason_code.is_failure:
@@ -178,13 +265,16 @@ def main():
             return                      # e.g. the sensor firmware's fog/client1/... topics
         sender = client_of(message.topic)
         if message.topic.endswith("/status"):
-            state.on_status(sender, message.payload.decode(errors="replace"))
+            text = message.payload.decode(errors="replace")
+            if state.on_status(sender, text):
+                print(f"status: {sender} is now {text or '(cleared)'}", flush=True)
         elif message.topic.endswith("/update"):
             update = parse_update(message.payload)
             if update is None:
                 print(f"bad update from {sender}: {message.payload[:80]!r}", flush=True)
             elif not state.on_update(sender, update):
-                print(f"old update from {sender} (round {update.get('round')}) ignored", flush=True)
+                print(f"update from {sender} (round {update.get('round')}) ignored: "
+                      "another round, or not a participant", flush=True)
 
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="fl-aggregator")
     client.on_connect = on_connect
@@ -192,38 +282,33 @@ def main():
     client.reconnect_delay_set(min_delay=1, max_delay=5)
     client.connect_async(MQTT_HOST, MQTT_PORT)
     client.loop_start()
-    print(f"aggregator: run {run}, rounds {ROUNDS or 'no limit'}, at least {MIN_CLIENTS} "
-          f"client(s), round timeout {ROUND_TIMEOUT_S:g} s", flush=True)
+    print(f"aggregator: run {run}, rounds {ROUNDS or 'no limit'}, at least {MIN_CLIENTS} active "
+          f"client(s), round timeout {ROUND_TIMEOUT_S:g} s, data in {run_dir}", flush=True)
 
     number = 0
     while ROUNDS == 0 or number < ROUNDS:
         number += 1
         state.wait_for_clients(MIN_CLIENTS)
-        state.start_round(number)
+        participants = state.start_round(number)
         started = time.monotonic()
-        client.publish(MODEL_TOPIC, json.dumps({"run": run, "round": number, "weights": weights}),
-                       qos=1, retain=True)
+        client.publish(MODEL_TOPIC, json.dumps({"run": run, "round": number, "rounds": ROUNDS,
+                                                "weights": weights}), qos=1, retain=True)
+        client.publish(ROUND_TOPIC, json.dumps({"phase": "start", "run": run, "round": number,
+                                                "rounds": ROUNDS,
+                                                "participants": sorted(participants)}), qos=1)
 
-        updates, missed = state.wait_for_updates(ROUND_TIMEOUT_S)
-        seconds = time.monotonic() - started
+        updates, missed, dropped = state.wait_for_updates(ROUND_TIMEOUT_S)
+        summary = round_summary(run, number, ROUNDS, participants, updates, missed, dropped,
+                                time.monotonic() - started)
         if updates:
-            weights = fedavg(list(updates.values()))
-            avg_loss = weighted_mean(list(updates.values()), "loss")
-            global_loss = weighted_mean(list(updates.values()), "loss_before")
-        else:
-            avg_loss = global_loss = float("nan")   # nobody answered: keep the model
-
-        note = f", no update from {', '.join(sorted(missed))}" if missed else ""
-        print(f"round {number}: {len(updates)} clients, {seconds:.2f} s, global loss "
-              f"{global_loss:.4f}, avg loss {avg_loss:.4f}{note}", flush=True)
-        append_csv(os.path.join(DATA_DIR, "rounds.csv"), {
-            "run": run, "round": number, "time": datetime.now().isoformat(timespec="seconds"),
-            "clients": len(updates), "missed": len(missed), "round_s": round(seconds, 3),
-            "global_loss": global_loss, "avg_loss": avg_loss, "weights": json.dumps(weights)})
+            weights = fedavg(list(updates.values()))   # nobody answered: keep the model
+        print(log_line(summary), flush=True)
+        append_csv(os.path.join(run_dir, "rounds.csv"), rounds_row(summary, weights))
         for sender, u in sorted(updates.items()):
-            append_csv(os.path.join(DATA_DIR, "updates.csv"), {
+            append_csv(os.path.join(run_dir, "updates.csv"), {
                 "run": run, "round": number, "client": sender, "num_samples": u["num_samples"],
                 "loss": u["loss"], "loss_before": u["loss_before"]})
+        client.publish(ROUND_TOPIC, json.dumps({"phase": "end", **summary}), qos=1)
         time.sleep(PAUSE_S)
 
     # Done: clear the retained model, so no client trains an old round again

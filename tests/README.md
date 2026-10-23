@@ -9,6 +9,8 @@ This folder holds the unit tests. Run all of them from the repo root with `.venv
 - `test_live.py`: step 4B, the load generator timing, the scaler steps, the fresh CPU read and the cluster safety.
 - `test_live_windows.py`: step 4B, the window rule and the windows report.
 - `test_mqtt_worker.py`: the fog-node MQTT worker, its message handler and training batches.
-- `test_fl_aggregator.py`: phase 2, the FL aggregator on the Pi: messages, FedAvg and the round state.
-- `test_fl_dashboard.py`: phase 2, the live FL dashboard: the board and round rules, and that its MQTT listener never publishes.
+- `test_fl_aggregator.py`: phase 2, the FL aggregator on the Pi: messages, FedAvg, active/standby clients, joins and leaves during a round, and the round summary.
+- `test_fl_dashboard.py`: phase 2, the live FL dashboard: the board and round rules, the aggregator's round messages, and that its MQTT listener never publishes.
+- `test_fl_control.py`: phase 2, join/leave: commands are QoS 1 and never retained, the answers, the log, and `status` never publishes (against a fake broker).
+- `test_pull_runs.py`: phase 2, copying the FL run data from the Pi: one folder per run, nothing overwritten, and the commands put into their run.
 - `test_workload.py`, `test_proactive.py`, `test_run_experiments.py`, `test_set_load.py`: earlier part.

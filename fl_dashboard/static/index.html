@@ -27,9 +27,10 @@
       </div>
       <div id="boards" class="board-grid"></div>
       <p class="muted legend">
-        <strong>Online</strong> / <strong>Offline</strong>: a live message was seen since the
-        dashboard started. <strong>Unknown</strong>: only an old status stored on the broker,
-        which may be out of date.
+        <strong>Active</strong>: trains in the rounds. <strong>Standby</strong>: connected, out of
+        the rounds (every board starts so). <strong>Offline</strong>: gone. These three need a live
+        message since the dashboard started. <strong>Unknown</strong>: only an old status stored
+        on the broker, which may be out of date.
       </p>
     </section>
 
@@ -62,9 +63,11 @@
           <thead>
             <tr>
               <th scope="col">Round</th>
+              <th scope="col">Active</th>
               <th scope="col">Answered</th>
               <th scope="col">Round time</th>
               <th scope="col">Didn't answer</th>
+              <th scope="col">Joined / left</th>
               <th scope="col">Global loss</th>
               <th scope="col">Avg loss</th>
             </tr>
@@ -77,9 +80,11 @@
   </main>
 
   <footer class="muted">
-    Read-only: listens to the MQTT broker and never publishes. Round time is measured here,
-    from the global model to the last client update. Global loss: the global model on the
-    clients' data before local training; avg loss: after local training.
+    Read-only: listens to the MQTT broker and never publishes. Finished rounds show the
+    aggregator's own numbers; a running round is counted here. Active: boards taking part when
+    the round started; a join counts from the next round. Chart: a dashed line marks joins (+)
+    and leaves (−) between rounds, a dotted line a board that left during a round. Global loss:
+    the global model on the clients' data before local training; avg loss: after local training.
   </footer>
 
   <script src="/static/vendor/chart-4.5.1.umd.min.js"></script>

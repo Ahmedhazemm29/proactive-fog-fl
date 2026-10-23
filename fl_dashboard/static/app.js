@@ -7,7 +7,8 @@ const POLL_MS = 1000;
 const $ = (id) => document.getElementById(id);
 
 const STATUS = {
-  online: { icon: "●", label: "Online" },
+  active: { icon: "●", label: "Active" },
+  standby: { icon: "◐", label: "Standby" },
   offline: { icon: "✕", label: "Offline" },
   unknown: { icon: "?", label: "Unknown" },
 };
@@ -36,6 +37,12 @@ function loss(value) {
 
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+// "+ESP-5 −ESP-2", or "+3 −1" when there are many
+function changes(joined, left) {
+  const names = [...joined.map((n) => `+${n}`), ...left.map((n) => `−${n}`)];
+  return names.length > 2 ? `+${joined.length} −${left.length}` : names.join(" ");
 }
 
 // ---- Broker indicator ----
@@ -90,7 +97,8 @@ function boardCard(board) {
 function showBoards(state) {
   $("boards").replaceChildren(...state.boards.map(boardCard));
   const count = (status) => state.boards.filter((b) => b.status === status).length;
-  let summary = `${count("online")} online · ${count("offline")} offline · ${count("unknown")} unknown`;
+  let summary = ["active", "standby", "offline", "unknown"]
+    .map((status) => `${count(status)} ${status}`).join(" · ");
   if (!state.broker.connected) summary += " · broker connection lost, statuses may be out of date";
   $("clients-summary").textContent = summary;
 }
@@ -122,22 +130,49 @@ function showRun(state) {
   } else {
     headline = current && current.in_progress ? "Round in progress" : "Between rounds";
     detail = `Run started ${clock(run.id)} · last FL message ${ago(state.now - run.last_message)}`;
+    if (current && current.active !== null) detail += ` · ${current.active} active in this round`;
   }
   $("run-state").textContent = headline;
   $("run-detail").textContent = detail;
 }
 
-// ---- 3. Loss chart ----
+// ---- 3. Loss chart, with join/leave markers ----
 
 let chart = null;
 let chartKey = "";
+
+// Draws the join/leave markers: a dashed line before the round where joins or
+// leaves took effect, a dotted line in a round that a board left mid-round.
+// A few lines of our own instead of an extra chart library.
+const joinLeaveMarkers = {
+  id: "joinLeaveMarkers",
+  afterDatasetsDraw(c) {
+    const area = c.chartArea;
+    const ctx = c.ctx;
+    ctx.save();
+    ctx.strokeStyle = ctx.fillStyle = cssVar("--text");
+    ctx.lineWidth = 1.5;
+    ctx.font = "13px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    for (const mark of c.$marks || []) {
+      const x = c.scales.x.getPixelForValue(mark.x);
+      if (x < area.left || x > area.right) continue;
+      ctx.setLineDash(mark.dotted ? [2, 3] : [7, 4]);
+      ctx.beginPath();
+      ctx.moveTo(x, area.top + 16);
+      ctx.lineTo(x, area.bottom);
+      ctx.stroke();
+      ctx.fillText(mark.label, x, area.top + 11);
+    }
+    ctx.restore();
+  },
+};
 
 function makeChart() {
   Chart.defaults.font.size = 14;                // readable on a demo screen
   chart = new Chart($("loss-chart"), {
     type: "line",
     data: {
-      labels: [],
       datasets: [
         { label: "Global loss (before local training)", data: [], borderWidth: 3,
           pointRadius: 4, pointStyle: "circle" },
@@ -149,17 +184,26 @@ function makeChart() {
       responsive: true,
       maintainAspectRatio: false,
       animation: false,
-      interaction: { mode: "index", intersect: false },
+      layout: { padding: { top: 6 } },
+      interaction: { mode: "nearest", axis: "x", intersect: false },
       scales: {
-        x: { title: { display: true, text: "Round" }, ticks: {}, grid: {} },
+        // Linear, so a marker can sit between two rounds (at 2.5, say); one tick per round
+        x: { type: "linear", title: { display: true, text: "Round" }, ticks: {}, grid: {},
+             afterBuildTicks: (scale) => {
+               const ticks = [];
+               for (let v = Math.ceil(scale.min); v <= scale.max; v++) ticks.push({ value: v });
+               scale.ticks = ticks;
+             } },
         y: { title: { display: true, text: "Loss (mean squared error)" }, beginAtZero: true,
              ticks: {}, grid: {} },
       },
       plugins: {
         legend: { labels: { usePointStyle: true, boxWidth: 12, boxHeight: 8 } },   // small markers
-        tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${c.parsed.y.toFixed(4)}` } },
+        tooltip: { callbacks: { title: (items) => `Round ${items[0].parsed.x}`,
+                                label: (c) => `${c.dataset.label}: ${c.parsed.y.toFixed(4)}` } },
       },
     },
+    plugins: [joinLeaveMarkers],
   });
   applyTheme();
 }
@@ -197,14 +241,22 @@ function setScale() {
 }
 
 function showChart(state) {
-  const rounds = state.rounds.filter((r) => r.global_loss !== null);
-  $("chart-empty").hidden = rounds.length > 0;
-  const key = JSON.stringify(rounds.map((r) => [r.round, r.global_loss, r.avg_loss]));
+  const withLoss = state.rounds.filter((r) => r.global_loss !== null);
+  $("chart-empty").hidden = withLoss.length > 0;
+  const marks = [];
+  for (const r of state.rounds) {
+    if (r.joined.length || r.left.length) marks.push({ x: r.round - 0.5, label: changes(r.joined, r.left) });
+    if (r.dropped.length) marks.push({ x: r.round, label: changes([], r.dropped), dotted: true });
+  }
+  const key = JSON.stringify([withLoss.map((r) => [r.round, r.global_loss, r.avg_loss]), marks]);
   if (key === chartKey) return;                 // nothing new: don't redraw
   chartKey = key;
-  chart.data.labels = rounds.map((r) => r.round);
-  chart.data.datasets[0].data = rounds.map((r) => r.global_loss);
-  chart.data.datasets[1].data = rounds.map((r) => r.avg_loss);
+  const last = state.rounds.length ? state.rounds[state.rounds.length - 1].round : 1;
+  chart.options.scales.x.min = 0.5;
+  chart.options.scales.x.max = last + 0.5;
+  chart.data.datasets[0].data = withLoss.map((r) => ({ x: r.round, y: r.global_loss }));
+  chart.data.datasets[1].data = withLoss.map((r) => ({ x: r.round, y: r.avg_loss }));
+  chart.$marks = marks;
   chart.update();
 }
 
@@ -216,11 +268,15 @@ function showRounds(state) {
     let missing;
     if (r.in_progress) missing = r.missing.length ? `waiting for ${r.missing.join(", ")}` : "all answered";
     else missing = r.missing.length ? r.missing.join(", ") : "all answered";
+    const moves = [changes(r.joined, r.left), ...r.dropped.map((n) => `−${n} (mid-round)`)]
+      .filter((text) => text).join(", ");
     tr.append(
       el("td", "num", r.in_progress ? `${r.round} (running)` : String(r.round)),
-      el("td", "num", `${r.answered} / ${state.expected}`),
+      el("td", "num", r.active === null ? "–" : String(r.active)),
+      el("td", "num", `${r.answered} / ${r.active === null ? state.expected : r.active}`),
       el("td", "num", r.round_s === null ? "–" : `${r.round_s.toFixed(2)} s`),
       el("td", "wrap", missing),
+      el("td", "wrap", moves || "–"),
       el("td", "num", loss(r.global_loss)),
       el("td", "num", loss(r.avg_loss)),
     );

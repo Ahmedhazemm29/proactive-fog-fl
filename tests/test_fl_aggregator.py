@@ -62,54 +62,131 @@ class FedAvg(unittest.TestCase):
         self.assertEqual(agg.fedavg([update([0.5, -1, 2, 0, 3], 50)]), [0.5, -1, 2, 0, 3])
 
 
+A, B, C, D = "esp32-000a", "esp32-000b", "esp32-000c", "esp32-000d"
+
+
+class Statuses(unittest.TestCase):
+
+    def test_active_standby_offline_and_old_firmware(self):
+        state = agg.RoundState(run=7)
+        state.on_status(A, "online-active")
+        state.on_status(B, "online")                # old firmware: always trained, counts as active
+        state.on_status(C, "online-standby")
+        state.on_status(D, "online-active")
+        state.on_status(D, "offline")               # the Last Will
+        self.assertEqual(state.active, {A, B})
+
+    def test_on_status_reports_only_changes(self):
+        state = agg.RoundState(run=7)
+        self.assertFalse(state.on_status(A, "online-standby"))   # was not active, still isn't
+        self.assertTrue(state.on_status(A, "online-active"))     # join
+        self.assertFalse(state.on_status(A, "online-active"))    # the same again
+        self.assertTrue(state.on_status(A, "online-standby"))    # leave
+
+
 class Rounds(unittest.TestCase):
 
     def setUp(self):
         self.state = agg.RoundState(run=7)
-        self.state.start_round(1)
+        self.state.on_status(A, "online-active")
+        self.state.on_status(B, "online-active")
+        self.state.on_status(C, "online-standby")
+        self.participants = self.state.start_round(1)
 
-    def test_online_and_offline(self):
-        self.state.on_status("esp32-0001", "online")
-        self.state.on_status("esp32-0002", "online")
-        self.state.on_status("esp32-0001", "offline")
-        self.assertEqual(self.state.online, {"esp32-0002"})
+    def test_participants_are_the_active_clients_at_the_start(self):
+        self.assertEqual(self.participants, {A, B})
+        self.assertEqual(self.state.missing(), {A, B})
 
-    def test_only_updates_of_this_run_and_round_count(self):
-        self.state.on_status("esp32-0001", "online")
-        self.assertFalse(self.state.on_update("esp32-0001", update([0] * 5, 10, round_number=0)))
-        self.assertFalse(self.state.on_update("esp32-0001", update([0] * 5, 10, run=6)))
-        self.assertEqual(self.state.missing(), {"esp32-0001"})
-        self.assertTrue(self.state.on_update("esp32-0001", update([0] * 5, 10)))
-        self.assertEqual(self.state.missing(), set())
+    def test_only_participants_updates_of_this_run_and_round_count(self):
+        self.assertFalse(self.state.on_update(A, update([0] * 5, 10, round_number=0)))
+        self.assertFalse(self.state.on_update(A, update([0] * 5, 10, run=6)))
+        self.assertFalse(self.state.on_update(C, update([0] * 5, 10)))       # standby
+        self.assertTrue(self.state.on_update(A, update([0] * 5, 10)))
+        self.assertEqual(self.state.missing(), {B})
+
+    def test_a_join_waits_for_the_next_round(self):
+        self.state.on_status(C, "online-active")
+        self.assertEqual(self.state.missing(), {A, B})                       # not waited for now
+        self.assertFalse(self.state.on_update(C, update([0] * 5, 10)))
+        self.assertEqual(self.state.start_round(2), {A, B, C})
+
+    def test_a_leave_drops_the_client_and_its_update(self):
+        self.assertTrue(self.state.on_update(A, update([1] * 5, 10)))
+        self.state.on_status(A, "online-standby")
+        self.assertEqual(self.state.updates, {})
+        self.assertEqual(self.state.dropped, {A})
+        self.assertEqual(self.state.missing(), {B})
+        self.assertEqual(self.state.start_round(2), {B})                     # a new round: no A
+        self.assertEqual(self.state.dropped, set())
 
     def test_a_new_round_forgets_the_old_updates(self):
-        self.state.on_update("esp32-0001", update([0] * 5, 10))
+        self.state.on_update(A, update([0] * 5, 10))
         self.state.start_round(2)
         self.assertEqual(self.state.updates, {})
-        self.assertEqual(self.state.missing(), {"esp32-0001"})   # still online
+        self.assertEqual(self.state.missing(), {A, B})
 
-    def test_wait_ends_when_every_online_client_answered(self):
-        for client in ("esp32-0001", "esp32-0002"):
-            self.state.on_status(client, "online")
-
+    def test_wait_ends_early_when_a_participant_leaves(self):
         def answer():
             time.sleep(0.05)
-            self.state.on_update("esp32-0001", update([1] * 5, 10))
+            self.state.on_update(A, update([1] * 5, 10))
             time.sleep(0.05)
-            self.state.on_status("esp32-0002", "offline")   # leaves: no longer waited for
+            self.state.on_status(B, "online-standby")       # leaves: not waited for any more
 
         threading.Thread(target=answer).start()
         started = time.monotonic()
-        updates, missed = self.state.wait_for_updates(timeout=5)
+        updates, missed, dropped = self.state.wait_for_updates(timeout=5)
         self.assertLess(time.monotonic() - started, 2)
-        self.assertEqual(set(updates), {"esp32-0001"})
-        self.assertEqual(missed, set())
+        self.assertEqual((set(updates), missed, dropped), ({A}, set(), {B}))
 
     def test_wait_stops_at_the_timeout(self):
-        self.state.on_status("esp32-0001", "online")
-        updates, missed = self.state.wait_for_updates(timeout=0.1)
-        self.assertEqual(updates, {})
-        self.assertEqual(missed, {"esp32-0001"})
+        self.state.on_update(A, update([1] * 5, 10))
+        updates, missed, dropped = self.state.wait_for_updates(timeout=0.1)
+        self.assertEqual((set(updates), missed, dropped), ({A}, {B}, set()))
+
+    def test_min_clients_counts_only_active_clients(self):
+        state = agg.RoundState(run=7)
+        state.on_status(A, "online-active")
+        state.on_status(B, "online-standby")
+        done = threading.Event()
+
+        def wait():
+            with mock.patch("builtins.print"):
+                state.wait_for_clients(2)
+            done.set()
+
+        threading.Thread(target=wait, daemon=True).start()
+        self.assertFalse(done.wait(0.2))                    # 1 active, 1 standby: not enough
+        state.on_status(B, "online-active")
+        self.assertTrue(done.wait(2))
+
+
+class Summary(unittest.TestCase):
+
+    def test_summary_row_and_log_line(self):
+        updates = {A: update([1] * 5, 100, loss=0.1, loss_before=0.5),
+                   B: update([3] * 5, 300, loss=0.3, loss_before=0.9)}
+        summary = agg.round_summary(7, 3, 5, {A, B, C, D}, updates, {C}, {D}, 1.23456)
+        self.assertEqual(summary["participants"], [A, B, C, D])
+        self.assertEqual((summary["answered"], summary["missed"], summary["dropped"]), ([A, B], [C], [D]))
+        self.assertAlmostEqual(summary["global_loss"], (0.5 * 100 + 0.9 * 300) / 400)
+        self.assertAlmostEqual(summary["avg_loss"], (0.1 * 100 + 0.3 * 300) / 400)
+        self.assertEqual((summary["round_s"], summary["rounds"]), (1.235, 5))
+        json.dumps(summary, allow_nan=False)                # fog/global/round must be plain JSON
+
+        row = agg.rounds_row(summary, [0.1] * 5)
+        self.assertEqual([row[k] for k in ("active", "clients", "missed", "dropped")], [4, 2, 1, 1])
+        self.assertEqual(list(row)[:4], ["run", "round", "time", "active"])
+        line = agg.log_line(summary)
+        self.assertIn("2 of 4 active clients", line)
+        self.assertIn(f"left during the round: {D}", line)
+
+    def test_round_without_answers(self):
+        summary = agg.round_summary(7, 1, 0, {A}, {}, {A}, set(), 10.0)
+        self.assertIsNone(summary["global_loss"])
+        json.dumps(summary, allow_nan=False)
+        self.assertNotEqual(agg.rounds_row(summary, [0] * 5)["avg_loss"],
+                            agg.rounds_row(summary, [0] * 5)["avg_loss"])   # nan in the CSV, as before
+        self.assertIn("global loss nan", agg.log_line(summary))
 
 
 if __name__ == "__main__":

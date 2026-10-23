@@ -19,13 +19,13 @@ python3 fl_dashboard/dashboard.py --rounds 5
 
 Then open http://127.0.0.1:8766. Stop it with Ctrl+C.
 
-`--rounds` is the run's total number of rounds, the `FL_ROUNDS` you give
-`pi/deploy.sh` (0 = no limit). The aggregator doesn't send its total over MQTT,
-so without `--rounds` the page shows "of ?" until the run is over.
+The aggregator sends the run's total number of rounds with every round, so the
+page shows "Round 3 of 5" by itself. `--rounds N` is only needed for an older
+aggregator without join/leave; without it, such a run shows "of ?" until it is over.
 
 | Option | Default | |
 |---|---|---|
-| `--rounds N` | not set | total rounds of the run |
+| `--rounds N` | not set | total rounds, for an older aggregator (0 = no limit) |
 | `--broker` | `fognode1.local` | MQTT broker |
 | `--broker-port` | `1883` | |
 | `--port` | `8766` | port of the page, on 127.0.0.1 only |
@@ -37,7 +37,10 @@ so without `--rounds` the page shows "of ?" until the run is over.
 1. **Clients**: one card per board of `hardware/esp_clients.md` (by default
    ESP-1 to ESP-6 and ESP-8) with its FL ID (`esp32-` + the last 2 bytes of its
    MAC). The status has a color, an icon and a word:
-   - **Online** (green ●): a fresh `online` status, or a fresh update from the board.
+   - **Active** (green ●): a fresh `online-active` status (or the older
+     firmware's plain `online`), or a fresh update from the board. It trains in the rounds.
+   - **Standby** (amber ◐): a fresh `online-standby`: connected, but out of the
+     rounds. Every board starts in standby; `hardware/tools/fl_control.py join` makes it active.
    - **Offline** (red ✕): a fresh `offline`; the broker sends the board's Last Will when it drops.
    - **Unknown** (grey ?): only an old status stored (retained) on the broker.
      Right after the start every board is unknown until it sends something
@@ -51,18 +54,24 @@ so without `--rounds` the page shows "of ?" until the run is over.
    stored on the broker.
 3. **Loss per round**: global loss (the global model on the clients' data,
    before local training) and avg loss (after local training), both weighted
-   by `num_samples` as in the aggregator. "Log scale" shows the later rounds better.
-4. **Rounds**: per round, how many of the shown boards answered, the round
-   time, which boards didn't answer (for the running round: which it is still
-   waiting for) and both losses.
+   by `num_samples` as in the aggregator. "Log scale" shows the later rounds
+   better. Joins and leaves are marked: a dashed line with "+ESP-5 −ESP-2"
+   before the round where they took effect, a dotted line inside a round that a
+   board left while it ran.
+4. **Rounds**: per round, the active boards (the participants when it
+   started), how many of them answered, the round time, which didn't answer
+   (for the running round: which it is still waiting for), the joins and
+   leaves, and both losses.
 
 The pill at the top says whether the dashboard is connected to the broker
 (it reconnects by itself) or whether the dashboard server has stopped.
 
-**Round time** is measured on the laptop: from the global model message to the
-last client update of that round. When a board doesn't answer, the aggregator
-waits for its timeout (10 s), so `rounds.csv` on the Pi has a longer time
-than this page.
+**Whose numbers:** a finished round shows the aggregator's own numbers from its
+`fog/global/round` message, the same as in `rounds.csv`. A running round, or
+every round of an older aggregator without that message, is counted here; its
+round time is then measured on the laptop, from the global model message to
+the last client update. The joins and leaves come from the participants of
+consecutive rounds, so they need the aggregator's messages too.
 
 ## How it works
 
@@ -71,7 +80,7 @@ listener on the broker, which is a change on the Pi. So a small server on the
 laptop does the listening:
 
 - `mqtt_listen.py`: read-only MQTT 3.1.1 client. It subscribes to
-  `fog/+/status`, `fog/+/update` and `fog/global/model` with QoS 0 and a clean
+  `fog/+/status`, `fog/+/update`, `fog/global/model` and `fog/global/round` with QoS 0 and a clean
   session, and sends only CONNECT, SUBSCRIBE, PINGREQ and DISCONNECT, never
   PUBLISH. Its client ID `fl-dashboard-<pid>` can't clash with the aggregator or
   a board. After a lost connection it tries again every 3 s.
