@@ -1,7 +1,7 @@
 # ESP32 edge clients
 
-ESP-1 to ESP-7 are ESP32-D0WD-V3, revision v3.1. Their MAC addresses were
-read with `esptool read_mac` on 2026-10-23.
+ESP-1 to ESP-7 are ESP32-D0WD-V3, revision v3.1. The MAC addresses of ESP-1
+to ESP-8 were read with `esptool read_mac` on 2026-10-23.
 
 ESP-8 (WROOM, USB-C) has a different chip: ESP32-D0WDQ6, revision v1.1.
 
