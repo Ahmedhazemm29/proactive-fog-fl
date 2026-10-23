@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FL live dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>Federated learning, live</h1>
+      <p class="muted subtitle">ESP32 clients and FedAvg rounds on the fog node (read-only)</p>
+    </div>
+    <div id="broker" class="conn conn-wait" role="status" aria-live="polite">
+      <span class="conn-icon" aria-hidden="true">…</span>
+      <span id="broker-text">Starting…</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- 1. The boards -->
+    <section aria-labelledby="clients-title">
+      <div class="section-head">
+        <h2 id="clients-title">Clients</h2>
+        <p id="clients-summary" class="muted"></p>
+      </div>
+      <div id="boards" class="board-grid"></div>
+      <p class="muted legend">
+        <strong>Online</strong> / <strong>Offline</strong>: a live message was seen since the
+        dashboard started. <strong>Unknown</strong>: only an old status stored on the broker,
+        which may be out of date.
+      </p>
+    </section>
+
+    <!-- 2. The round and the loss chart -->
+    <section class="middle">
+      <div class="panel round-panel" aria-labelledby="round-title">
+        <h2 id="round-title">Round</h2>
+        <p class="round-number"><span id="round-now">–</span><span id="round-total" class="round-total"></span></p>
+        <p id="run-state" class="run-state"></p>
+        <p id="run-detail" class="muted"></p>
+      </div>
+      <div class="panel chart-panel" aria-labelledby="chart-title">
+        <div class="panel-head">
+          <h2 id="chart-title">Loss per round</h2>
+          <label class="toggle"><input type="checkbox" id="log-scale"> Log scale</label>
+        </div>
+        <div class="chart-box">
+          <canvas id="loss-chart" role="img"
+                  aria-label="Global loss and average loss after local training, per round"></canvas>
+          <p id="chart-empty" class="empty">The chart fills in after the first round.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. One row per round -->
+    <section aria-labelledby="rounds-title">
+      <h2 id="rounds-title">Rounds</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Round</th>
+              <th scope="col">Answered</th>
+              <th scope="col">Round time</th>
+              <th scope="col">Didn't answer</th>
+              <th scope="col">Global loss</th>
+              <th scope="col">Avg loss</th>
+            </tr>
+          </thead>
+          <tbody id="rounds-body"></tbody>
+        </table>
+        <p id="rounds-empty" class="empty">No rounds yet.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="muted">
+    Read-only: listens to the MQTT broker and never publishes. Round time is measured here,
+    from the global model to the last client update. Global loss: the global model on the
+    clients' data before local training; avg loss: after local training.
+  </footer>
+
+  <script src="/static/vendor/chart-4.5.1.umd.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

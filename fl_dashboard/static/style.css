@@ -1,0 +1,189 @@
+/* FL live dashboard. Colors are variables, so dark mode only swaps them. */
+
+:root {
+  color-scheme: light dark;
+  --bg: #f6f8fa;
+  --panel: #ffffff;
+  --text: #1f2328;
+  --muted: #59636e;
+  --border: #d1d9e0;
+  --grid: rgba(31, 35, 40, 0.12);
+  --online: #1a7f37;
+  --online-bg: #dafbe1;
+  --offline: #cf222e;
+  --offline-bg: #ffebe9;
+  --unknown: #6e7781;
+  --unknown-bg: #eaeef2;
+  --badge-text: #ffffff;
+  --global: #0969da;
+  --avg: #bf3989;
+  --running-bg: #ddf4ff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --text: #e6edf3;
+    --muted: #9198a1;
+    --border: #30363d;
+    --grid: rgba(230, 237, 243, 0.12);
+    --online: #3fb950;
+    --online-bg: rgba(46, 160, 67, 0.18);
+    --offline: #f85149;
+    --offline-bg: rgba(248, 81, 73, 0.16);
+    --unknown: #9198a1;
+    --unknown-bg: rgba(110, 118, 129, 0.2);
+    --badge-text: #0d1117;
+    --global: #4493f8;
+    --avg: #f778ba;
+    --running-bg: rgba(56, 139, 253, 0.15);
+  }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }   /* also for elements that set their own display */
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+}
+
+h1 { margin: 0; font-size: clamp(1.4rem, 2.6vw, 2rem); }
+h2 { margin: 0 0 12px; font-size: 1.25rem; }
+p { margin: 0; }
+.muted { color: var(--muted); }
+
+/* ---- Header and the broker indicator ---- */
+header.top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px clamp(16px, 3vw, 32px);
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.subtitle { margin-top: 2px; }
+
+.conn {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 2px solid var(--unknown);
+  background: var(--unknown-bg);
+  font-weight: 600;
+}
+.conn-ok { border-color: var(--online); background: var(--online-bg); }
+.conn-down { border-color: var(--offline); background: var(--offline-bg); }
+.conn-icon { font-weight: 700; }
+.conn-ok .conn-icon { color: var(--online); }
+.conn-down .conn-icon { color: var(--offline); }
+
+/* ---- Layout ---- */
+main {
+  display: grid;
+  gap: 28px;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px clamp(16px, 3vw, 32px) 24px;
+}
+.section-head { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; }
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  min-width: 0;
+}
+
+/* ---- Boards ---- */
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 14px;
+}
+.board {
+  background: var(--unknown-bg);
+  border: 1px solid var(--border);
+  border-left: 10px solid var(--unknown);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.board.online { background: var(--online-bg); border-left-color: var(--online); }
+.board.offline { background: var(--offline-bg); border-left-color: var(--offline); }
+.board-name { font-size: clamp(1.4rem, 2.2vw, 1.8rem); font-weight: 700; line-height: 1.1; }
+.board-id { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); }
+.badge {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  margin: 10px 0 8px;
+  padding: 3px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--badge-text);
+  background: var(--unknown);
+}
+.badge.online { background: var(--online); }
+.badge.offline { background: var(--offline); }
+.board-detail { font-size: 0.9rem; color: var(--muted); }
+.legend { margin-top: 10px; font-size: 0.9rem; }
+.broker-down .board-grid { opacity: 0.55; }
+
+/* ---- Round and chart ---- */
+.middle {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(0, 3fr);
+  gap: 16px;
+}
+.round-number { font-size: clamp(3rem, 7vw, 5rem); font-weight: 800; line-height: 1; margin: 4px 0 12px; }
+.round-total { font-size: 0.4em; font-weight: 600; color: var(--muted); margin-left: 8px; }
+.run-state { font-size: 1.15rem; font-weight: 600; margin-bottom: 6px; }
+.panel-head { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; justify-content: space-between; }
+.toggle { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); cursor: pointer; }
+.toggle input { width: 18px; height: 18px; margin: 0; cursor: pointer; }
+.chart-box { position: relative; height: 300px; }
+.empty {
+  color: var(--muted);
+  font-style: italic;
+  padding: 12px 0;
+}
+.chart-box .empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* ---- Rounds table ---- */
+.table-wrap {
+  overflow-x: auto;                   /* a narrow window scrolls the table, not the page */
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px 12px 8px;
+}
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 9px 10px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+td.wrap { white-space: normal; min-width: 160px; }
+th { font-size: 0.9rem; color: var(--muted); }
+td.num, th.num { font-variant-numeric: tabular-nums; }
+tr.in-progress td { background: var(--running-bg); font-weight: 600; }
+tbody tr:last-child td { border-bottom: none; }
+
+footer { max-width: 1400px; margin: 0 auto; padding: 0 clamp(16px, 3vw, 32px) 24px; font-size: 0.85rem; }
+
+/* ---- Smaller windows ---- */
+@media (max-width: 860px) {
+  .middle { grid-template-columns: 1fr; }
+  .chart-box { height: 260px; }
+}
