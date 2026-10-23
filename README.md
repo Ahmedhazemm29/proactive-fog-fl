@@ -225,6 +225,7 @@ Before the reproduction, the thesis built a testbed for vertical CPU scaling of 
 ├── tests/                     # unit tests for every step
 ├── esp32/                     # phase 2: ESP32 FL client and sensor client (PlatformIO)
 ├── pi/                        # phase 2: the Pi fog node: FL aggregator, compose file and deploy.sh
+├── fl_dashboard/              # phase 2: live FL dashboard on the laptop, read-only from the Pi's MQTT broker
 ├── controller/                # earlier part: the reactive and proactive CPU controllers
 ├── workload/                  # earlier part: the training workload of the two workers; also mqtt_worker.py, the Pi's worker
 ├── load/                      # earlier part: named load profiles for those workers
@@ -234,7 +235,7 @@ Before the reproduction, the thesis built a testbed for vertical CPU scaling of 
                                # traces, the model weights and the raw data of every run; Quick Start rebuilds it
 ```
 
-Each folder has a README with its file list: [docs/](docs/), [scripts/](scripts/), [predictors/](predictors/), [autoscaler/](autoscaler/), [live/](live/), [monitoring/](monitoring/), [results/](results/), [tests/](tests/), [esp32/](esp32/), [pi/](pi/), [controller/](controller/), [workload/](workload/), [load/](load/), [analysis/](analysis/) and [figures/](figures/). The top-level files are [README.md](README.md), [.gitignore](.gitignore) and [docker-compose.yml](docker-compose.yml).
+Each folder has a README with its file list: [docs/](docs/), [scripts/](scripts/), [predictors/](predictors/), [autoscaler/](autoscaler/), [live/](live/), [monitoring/](monitoring/), [results/](results/), [tests/](tests/), [esp32/](esp32/), [pi/](pi/), [fl_dashboard/](fl_dashboard/), [controller/](controller/), [workload/](workload/), [load/](load/), [analysis/](analysis/) and [figures/](figures/). The top-level files are [README.md](README.md), [.gitignore](.gitignore) and [docker-compose.yml](docker-compose.yml).
 
 ---
 
@@ -353,6 +354,8 @@ cd ..
 FL_ROUNDS=5 FL_MIN_CLIENTS=6 pi/deploy.sh            # aggregator on the Pi: 5 rounds once 6 clients are online
 ssh pi5@fognode1.local "docker logs fl-aggregator"   # one line per round
 ```
+
+To watch a run live in the browser, start `python3 fl_dashboard/dashboard.py --rounds 5` and open http://127.0.0.1:8766. The page shows the boards, the round, the loss per round and one row per round. It is read-only: it only listens to the broker. See [fl_dashboard/README.md](fl_dashboard/README.md).
 
 First test (2026-10-22, 5 boards, the broker and aggregator on the laptop because the Pi was offline): all 5 clients took part in all 5 rounds, a round took 0.14 to 0.36 s, local training 3.5 to 4.5 ms on the ESP32, and the global model's loss on the clients' data fell every round, from 0.942 to 0.033, 0.021, 0.018 and 0.017.
 
