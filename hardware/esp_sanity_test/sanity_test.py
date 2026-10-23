@@ -6,7 +6,7 @@ Run it with PlatformIO's Python, which already has pyserial:
 
 Steps:
   1. Build the sketch in this folder (src/main.cpp) and flash it with PlatformIO.
-  2. Reset the board and read its serial output (115200 baud), at most 25 s.
+  2. Reset the board and read its serial output (115200 baud), at most 35 s.
   3. Print one PASS or FAIL line for the board's MAC address.
 
 PASS means all of these:
@@ -15,7 +15,9 @@ PASS means all of these:
   - Wi-Fi connects within 20 seconds
   - the IP address and RSSI are printed
 Anything else is FAIL, with the reason. A board that restarts during the
-test (for example a brownout from weak USB power) also fails.
+test (for example a brownout from weak USB power) also fails. When Wi-Fi
+does not connect, the sketch scans for networks, and the reason says whether
+the target SSID was seen and its RSSI.
 
 Options:
   --no-flash      skip step 1 (the sketch is already on the board)
@@ -42,7 +44,8 @@ SECRETS = PROJECT_DIR / "include" / "secrets.h"
 
 BAUD = 115200        # must match Serial.begin in src/main.cpp
 WIFI_LIMIT_S = 20.0  # Wi-Fi must connect within this many seconds
-READ_TIME_S = 25.0   # read the output at most this long (limit + boot time)
+                     # (WIFI_TIMEOUT_MS in src/main.cpp, then it scans)
+READ_TIME_S = 35.0   # read the output at most this long (limit + boot + scan)
 
 # ---- Lines the sketch prints (see src/main.cpp) ----
 
@@ -57,7 +60,13 @@ PATTERNS = [
     ("wifi_status", re.compile(r"^WiFi: not connected after [\d.]+ s \(status (.+)\)$"), str),
     ("ip", re.compile(r"^IP: (\d+\.\d+\.\d+\.\d+)$"), str),
     ("rssi", re.compile(r"^RSSI: (-?\d+) dBm$"), int),
+    ("target_ssid", re.compile(r'^WiFi: connecting to "(.*)" \.\.\.$'), str),
+    ("scan_error", re.compile(r"^Scan: failed \(error (-?\d+)\)$"), int),
 ]
+
+# One network of the Wi-Fi scan: Scan: -61 dBm, channel 6, WPA2-PSK, SSID "HomeNet"
+SCAN_LINE = re.compile(r'^Scan: (-?\d+) dBm, channel (\d+), ([^,]+), SSID "(.*)"$')
+SCAN_DONE = "Scan: done"  # printed after the last network of the scan
 
 # Everything a passing board reports; reading stops once all are seen
 NEEDED = ["mac", "flash_mb", "wifi_s", "ip", "rssi"]
@@ -127,10 +136,22 @@ def parse_line(line, found):
         if match:
             found[key] = convert(match.group(1))
 
+    # Wi-Fi scan: collect every network, note when the list is complete
+    match = SCAN_LINE.match(line)
+    if match:
+        found["networks"].append({
+            "rssi": int(match.group(1)),
+            "channel": int(match.group(2)),
+            "security": match.group(3),
+            "ssid": match.group(4),
+        })
+    if line == SCAN_DONE:
+        found["scan_done"] = True
+
 
 def read_board(port):
     """Reset the board and collect what the sketch reports (a dict)."""
-    found = {"boots": 0, "brownout": False}
+    found = {"boots": 0, "brownout": False, "networks": []}
 
     # Open the port with DTR and RTS released: on ESP32 dev boards these
     # lines drive the BOOT (IO0) and EN (reset) pins
@@ -153,13 +174,33 @@ def read_board(port):
             continue
         print("  |", line, flush=True)
         parse_line(line, found)
-        if all(key in found for key in NEEDED):
-            break  # everything is there, no need to wait longer
+        # Stop early: everything for a PASS is there, or the scan after a
+        # failed connection is complete
+        if all(key in found for key in NEEDED) or found.get("scan_done"):
+            break
     ser.close()
     return found
 
 
 # ---- Step 3: judge ----
+
+def scan_summary(found):
+    """Whether the board's Wi-Fi scan saw the target network, and its RSSI."""
+    if not found.get("scan_done"):
+        return "no Wi-Fi scan in the output"
+    if "scan_error" in found:
+        return f"the Wi-Fi scan failed (error {found['scan_error']})"
+    networks = found["networks"]
+    target = found.get("target_ssid")
+    if target is None:
+        return f"target SSID unknown ({len(networks)} networks seen)"
+    seen = [net for net in networks if net["ssid"] == target]
+    if not seen:
+        return f'target SSID "{target}" not seen in the scan ({len(networks)} networks seen)'
+    best = max(seen, key=lambda net: net["rssi"])  # strongest, if seen more than once
+    return (f'target SSID "{target}" seen in the scan (RSSI {best["rssi"]} dBm,'
+            f' channel {best["channel"]}, {best["security"]})')
+
 
 def judge(found, clients, clients_path):
     """Check the PASS rules. Returns the reasons for FAIL (empty = PASS)."""
@@ -178,7 +219,7 @@ def judge(found, clients, clients_path):
     if wifi_s is None:
         last = found.get("wifi_status", "none reported")
         reasons.append(f"Wi-Fi did not connect within {WIFI_LIMIT_S:.0f} s"
-                       f" (last status {last})")
+                       f" (last status {last}), {scan_summary(found)}")
     elif wifi_s > WIFI_LIMIT_S:
         reasons.append(f"Wi-Fi took {wifi_s:.1f} s to connect"
                        f" (limit {WIFI_LIMIT_S:.0f} s)")
