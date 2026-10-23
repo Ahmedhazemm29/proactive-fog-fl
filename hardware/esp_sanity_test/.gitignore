@@ -1,0 +1,5 @@
+# PlatformIO build output
+.pio/
+
+# Wi-Fi password (copy include/secrets.example.h to include/secrets.h)
+include/secrets.h
