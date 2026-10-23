@@ -1,10 +1,33 @@
-# Fog node (Raspberry Pi 5, arm64): MQTT worker 1, fed by ESP32 client 1,
-# plus cAdvisor for the same container metrics as on the laptop.
+# Fog node (Raspberry Pi 5, arm64): the FL aggregator for the ESP32 FL
+# clients, MQTT worker 1 (fed by the sensor firmware), and cAdvisor for the
+# same container metrics as on the laptop.
 # The MQTT broker (container "mqtt", port 1883) runs separately on the Pi.
 # Deploy from the laptop with pi/deploy.sh.
 name: fog-node
 
 services:
+  fl-aggregator:
+    build: ./aggregator
+    image: thesis/fl-aggregator:latest
+    container_name: fl-aggregator
+    labels:
+      thesis.role: "aggregator"
+    # Period/quota (not "cpus"), so a controller can change it later
+    cpu_period: 100000
+    cpu_quota: 100000                 # 1.0 CPU
+    environment:
+      MQTT_HOST: fognode1.local
+      # Set on the laptop when deploying, e.g. FL_ROUNDS=5 FL_MIN_CLIENTS=6 pi/deploy.sh
+      ROUNDS: ${FL_ROUNDS:-0}         # 0 = keep going
+      MIN_CLIENTS: ${FL_MIN_CLIENTS:-1}
+      ROUND_TIMEOUT_S: "10"
+    extra_hosts:
+      - "fognode1.local:host-gateway"
+    volumes:
+      - ./fl-data:/data               # rounds.csv and updates.csv
+    # Restart after a crash, but not after it finished its ROUNDS
+    restart: on-failure
+
   worker-1:
     build:
       context: ../workload

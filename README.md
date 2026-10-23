@@ -33,9 +33,10 @@ are compared on aggregation round time, CPU throttling and wasted CPU.
 
 ### Status
 - Built: ESP32 -> MQTT -> Pi link, containers with live CPU limits,
-  reactive and proactive autoscaler (laptop simulation).
-- To build: on-device training, secure aggregation, autoscaler on the
-  Pi, cloud aggregation.
+  reactive and proactive autoscaler (laptop simulation), on-device
+  training with FedAvg on the Pi (first version, no secure aggregation).
+- To build: secure aggregation (the hook `protect_update()` is in the
+  ESP32 firmware), autoscaler on the Pi, cloud aggregation.
 - To decide: secure aggregation method (masking is light on the ESP32,
   homomorphic encryption gives more CPU load at the fog).
 
@@ -191,7 +192,8 @@ The entries are numbered by step. The part before the dot names the step, and th
 | Thesis writing | In progress |
 | Phase 2: ESP32 client, publishes sensor data over MQTT at a rate set live | Done, see [esp32/](esp32/) |
 | Phase 2: Pi fog node, MQTT worker with a live CPU limit, plus cAdvisor | Done, see [pi/](pi/) |
-| Phase 2: on-device training, secure aggregation, autoscaler on the Pi | Planned, see [Pipeline](#pipeline-proposed-design) |
+| Phase 2: on-device training on the ESP32s, FedAvg on the Pi (no secure aggregation yet) | Done, see [esp32/](esp32/) and [pi/](pi/) |
+| Phase 2: secure aggregation, autoscaler on the Pi | Planned, see [Pipeline](#pipeline-proposed-design) |
 
 Before the reproduction, the thesis built a testbed for vertical CPU scaling of two containers. Its code and results are in this repo too, see [the earlier part](#earlier-part-vertical-cpu-scaling).
 
@@ -221,8 +223,8 @@ Before the reproduction, the thesis built a testbed for vertical CPU scaling of 
 │   ├── autoscaler_sensitivity/  # step 4A, the sensitivity grid
 │   └── autoscaler_live/       # step 4B, the first window, plus calm/, rise/ and spiky/
 ├── tests/                     # unit tests for every step
-├── esp32/                     # phase 2: ESP32 MQTT client (PlatformIO)
-├── pi/                        # phase 2: the Pi fog node, its compose file and deploy.sh
+├── esp32/                     # phase 2: ESP32 FL client and sensor client (PlatformIO)
+├── pi/                        # phase 2: the Pi fog node: FL aggregator, compose file and deploy.sh
 ├── controller/                # earlier part: the reactive and proactive CPU controllers
 ├── workload/                  # earlier part: the training workload of the two workers; also mqtt_worker.py, the Pi's worker
 ├── load/                      # earlier part: named load profiles for those workers
@@ -339,29 +341,26 @@ Grafana runs at http://localhost:3000 and Prometheus at http://localhost:9090.
 
 ## Fog Node: ESP32 and Raspberry Pi
 
-The built part of the pipeline: an ESP32 publishes sensor values over MQTT, and a worker container on the Pi trains on them, so its CPU demand follows the ESP32's publish rate. The Pi is `pi5@fognode1.local` (Raspberry Pi 5, 4 GB, arm64). The MQTT broker (Mosquitto, container `mqtt`, port 1883) runs on the Pi and is not part of this repo.
+The built part of the pipeline. The Pi is `pi5@fognode1.local` (Raspberry Pi 5, 4 GB, arm64). The MQTT broker (Mosquitto, container `mqtt`, port 1883) runs on the Pi and is not part of this repo. The ESP32s find it as `fognode1.local` (mDNS) and reconnect by themselves.
 
-**ESP32** ([esp32/](esp32/), PlatformIO):
+**Federated learning** (first version, no secure aggregation yet). Every ESP32 makes its own time series, which never leaves the board, and trains a tiny model on it: linear regression that predicts the next value from the last 4. The aggregator on the Pi runs the rounds: it publishes the global model, collects the clients' updates and averages them weighted by their number of samples (FedAvg). Clients that join or leave are seen through their status messages and the MQTT Last Will. Details: [esp32/README.md](esp32/README.md) and [pi/README.md](pi/README.md).
 
 ```bash
 cd esp32
 cp include/secrets.example.h include/secrets.h      # then fill in WIFI_SSID and WIFI_PASSWORD
-pio run -t upload                                    # client 1, on /dev/ttyUSB0
-PLATFORMIO_BUILD_FLAGS="-DCLIENT_ID=2" pio run -t upload   # another client id
-pio device monitor                                   # serial log, 115200 baud
+pio run -t upload --upload-port /dev/ttyUSB0         # the same firmware on every board; the ID comes from the MAC
+cd ..
+FL_ROUNDS=5 FL_MIN_CLIENTS=6 pi/deploy.sh            # aggregator on the Pi: 5 rounds once 6 clients are online
+ssh pi5@fognode1.local "docker logs fl-aggregator"   # one line per round
 ```
 
-It finds the broker as `fognode1.local` (mDNS), publishes JSON on `fog/client<ID>/data` and reconnects by itself.
+First test (2026-10-22, 5 boards, the broker and aggregator on the laptop because the Pi was offline): all 5 clients took part in all 5 rounds, a round took 0.14 to 0.36 s, local training 3.5 to 4.5 ms on the ESP32, and the global model's loss on the clients' data fell every round, from 0.942 to 0.033, 0.021, 0.018 and 0.017.
 
-**Pi** ([pi/](pi/)): from the repo root on the laptop,
-
-```bash
-pi/deploy.sh      # copies only the worker files to ~/fog on the Pi, builds the image there and starts it
-```
-
-This starts `fl-worker-1` (`workload/mqtt_worker.py`, 1.0 CPU, metrics on port 8000) and cAdvisor v0.60.6 (port 8080). Then change the ESP32's publish rate (1 to 50 messages/s) and watch the worker's CPU follow:
+**Load generation** (the earlier step). The `sensor` firmware publishes sensor values, and a worker container on the Pi trains on them, so its CPU demand follows the publish rate (1 to 50 messages/s):
 
 ```bash
+cd esp32 && pio run -e sensor -t upload && cd ..     # client 1
+pi/deploy.sh                                         # also starts fl-worker-1 and cAdvisor v0.60.6 (port 8080)
 ssh pi5@fognode1.local "docker exec mqtt mosquitto_pub -t fog/client1/control -m 30"
 ssh pi5@fognode1.local "docker stats --no-stream fl-worker-1"
 ```
@@ -383,8 +382,8 @@ Measured with 10 training steps per message: 1.5% CPU at 1 message/s, 26 to 34% 
 | Load generator | Python asyncio | Open loop with 6,000 keep-alive connections |
 | Metrics | cAdvisor v0.49.1, Prometheus v2.53.0 | Container CPU, scraped every 5 s |
 | Dashboards | Grafana 11.1.0 | The live dashboard `autoscaler-live` |
-| Edge client | ESP32, PlatformIO, PubSubClient 2.8 | MQTT client with a live publish rate, broker found with mDNS |
-| Fog node | Raspberry Pi 5, Mosquitto, cAdvisor v0.60.6 | MQTT worker with paho-mqtt and prometheus-client, 1.0 CPU |
+| Edge client | ESP32, PlatformIO, PubSubClient 2.8, ArduinoJson 7 | FL client (linear model trained with SGD on the board) and sensor client, broker found with mDNS |
+| Fog node | Raspberry Pi 5, Mosquitto, cAdvisor v0.60.6 | FL aggregator (FedAvg, paho-mqtt) and MQTT worker (paho-mqtt, prometheus-client), 1.0 CPU each |
 
 ---
 
