@@ -6,7 +6,9 @@ Tests for pi/aggregator/aggregator.py (the FL aggregator on the Pi). Run all tes
 No broker needed: paho-mqtt is replaced by a stand-in, and the message
 parsing, FedAvg and the round state are called directly.
 """
+import contextlib
 import csv
+import io
 import json
 import os
 import sys
@@ -160,6 +162,35 @@ class Rounds(unittest.TestCase):
         self.assertFalse(done.wait(0.2))                    # 1 active, 1 standby: not enough
         state.on_status(B, "online-active")
         self.assertTrue(done.wait(2))
+
+
+class SlowOutput(io.StringIO):
+    """stdout that waits a little in every write, like a pipe: other threads run in between."""
+
+    def write(self, text):
+        time.sleep(0.0005)
+        return super().write(text)
+
+
+class Log(unittest.TestCase):
+
+    def test_lines_from_several_threads_stay_whole(self):
+        # The MQTT thread and the main loop log at the same time (2026-10-24:
+        # "status: ... is now onlinewaiting for clients" in docker logs)
+        out = SlowOutput()
+        lines = [f"thread {t} line {i}" for t in range(4) for i in range(30)]
+
+        def write(t):
+            for i in range(30):
+                agg.log(f"thread {t} line {i}")
+
+        with contextlib.redirect_stdout(out):
+            threads = [threading.Thread(target=write, args=(t,)) for t in range(4)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+        self.assertEqual(sorted(out.getvalue().splitlines()), sorted(lines))
 
 
 class Summary(unittest.TestCase):

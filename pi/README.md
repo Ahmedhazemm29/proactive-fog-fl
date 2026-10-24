@@ -41,6 +41,7 @@ data/fl-runs/
 └── <date>_<run>/                  # e.g. 2026-10-23_1792772831
     ├── rounds.csv, updates.csv
     └── control.csv                # the run's commands, also those sent before it started
+                                   # or while it waited for its first clients
 ```
 
 A run's own folder on the Pi is copied again on every pull while it grows. Runs split out of the old shared files are written once and never overwritten.
