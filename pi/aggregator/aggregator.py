@@ -16,6 +16,11 @@ The aggregator publishes:
                       {"phase": "start", "run", "round", "rounds", "participants"}
                       {"phase": "end", ...the round's results, see round_summary()}
 
+Before round 1 it reads the stored (retained) statuses: after subscribing,
+it waits until no status has come in for STATUS_QUIET_S seconds. Otherwise
+round 1 could start as soon as MIN_CLIENTS of them were read, without the
+active clients whose status came a few milliseconds later.
+
 Each round:
     1. wait until at least MIN_CLIENTS clients are active
     2. the clients active now are the round's participants; a client that
@@ -57,6 +62,7 @@ ROUNDS = int(os.getenv("ROUNDS", "0"))                   # 0 = keep going
 MIN_CLIENTS = int(os.getenv("MIN_CLIENTS", "1"))         # active clients needed for a round
 ROUND_TIMEOUT_S = float(os.getenv("ROUND_TIMEOUT_S", "10"))
 PAUSE_S = float(os.getenv("PAUSE_S", "1"))               # between two rounds
+STATUS_QUIET_S = float(os.getenv("STATUS_QUIET_S", "1"))  # stored statuses read when quiet this long
 DATA_DIR = os.getenv("DATA_DIR", "/data")
 
 MODEL_TOPIC = "fog/global/model"
@@ -182,11 +188,14 @@ class RoundState:
         self.participants = set()       # the clients active when this round started
         self.dropped = set()            # participants that left during this round
         self.updates = {}               # participant -> update, this round only
+        self.subscribed_at = None       # monotonic time of the first SUBACK
+        self.last_status_at = None      # monotonic time of the last status message
         self.changed = threading.Condition()
 
     def on_status(self, client, text):
         """A status message. Returns True if the client became active or stopped being active."""
         with self.changed:
+            self.last_status_at = time.monotonic()
             was_active = client in self.active
             if text in ACTIVE_STATUSES:
                 self.active.add(client)     # takes part from the next round on
@@ -199,6 +208,30 @@ class RoundState:
                     self.dropped.add(client)
             self.changed.notify_all()
             return was_active != (client in self.active)
+
+    def on_subscribed(self):
+        """The broker confirmed the subscription; the stored statuses come right after it."""
+        with self.changed:
+            if self.subscribed_at is None:
+                self.subscribed_at = time.monotonic()
+            self.changed.notify_all()
+
+    def wait_for_stored_statuses(self, quiet):
+        """
+        Before round 1: wait until subscribed and then until no status message
+        has come in for `quiet` seconds, so all stored statuses are read.
+        Returns the number of active clients.
+        """
+        with self.changed:
+            while True:
+                if self.subscribed_at is None:
+                    self.changed.wait(timeout=10)       # not connected yet
+                    continue
+                last = max(self.subscribed_at, self.last_status_at or 0)
+                left = last + quiet - time.monotonic()
+                if left <= 0:
+                    return len(self.active)
+                self.changed.wait(timeout=left)
 
     def on_update(self, client, update):
         """Keep a participant's update of the current round; returns False for any other."""
@@ -274,6 +307,9 @@ def main():
         client.subscribe([("fog/+/status", 1), ("fog/+/update", 1)])
         log(f"mqtt: connected to {MQTT_HOST}:{MQTT_PORT}")
 
+    def on_subscribe(client, userdata, mid, reason_code_list, properties):
+        state.on_subscribed()
+
     def on_message(client, userdata, message):
         if not message.topic.startswith("fog/esp32-"):
             return                      # e.g. the sensor firmware's fog/client1/... topics
@@ -293,11 +329,15 @@ def main():
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="fl-aggregator")
     client.on_connect = on_connect
     client.on_message = on_message
+    client.on_subscribe = on_subscribe
     client.reconnect_delay_set(min_delay=1, max_delay=5)
     client.connect_async(MQTT_HOST, MQTT_PORT)
     client.loop_start()
     log(f"aggregator: run {run}, rounds {ROUNDS or 'no limit'}, at least {MIN_CLIENTS} active "
         f"client(s), round timeout {ROUND_TIMEOUT_S:g} s, data in {run_dir}")
+
+    active = state.wait_for_stored_statuses(STATUS_QUIET_S)
+    log(f"stored statuses read: {active} active client(s)")
 
     number = 0
     while ROUNDS == 0 or number < ROUNDS:
