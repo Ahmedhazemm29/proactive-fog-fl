@@ -1,7 +1,10 @@
 .venv/
 __pycache__/
 *.pyc
-data/
+# data/ is ignored (CSV logs, raw datasets), except the small shareable samples.
+# "data/*" instead of "data/": git cannot re-include files inside an ignored folder.
+data/*
+!data/samples/
 
 # Live load profiles (written by scripts/set_load.py); named ones in load/profiles/ are tracked
 load/fl-worker-*.json
