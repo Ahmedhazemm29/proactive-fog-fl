@@ -6,9 +6,11 @@ Tests for pi/aggregator/aggregator.py (the FL aggregator on the Pi). Run all tes
 No broker needed: paho-mqtt is replaced by a stand-in, and the message
 parsing, FedAvg and the round state are called directly.
 """
+import csv
 import json
 import os
 import sys
+import tempfile
 import threading
 import time
 import types
@@ -175,10 +177,13 @@ class Summary(unittest.TestCase):
 
         row = agg.rounds_row(summary, [0.1] * 5)
         self.assertEqual([row[k] for k in ("active", "clients", "missed", "dropped")], [4, 2, 1, 1])
+        self.assertIs(summary["empty"], False)
+        self.assertIs(row["empty"], False)
         self.assertEqual(list(row)[:4], ["run", "round", "time", "active"])
         line = agg.log_line(summary)
         self.assertIn("2 of 4 active clients", line)
         self.assertIn(f"left during the round: {D}", line)
+        self.assertTrue(line.startswith("round 3:"))        # no EMPTY prefix
 
     def test_round_without_answers(self):
         summary = agg.round_summary(7, 1, 0, {A}, {}, {A}, set(), 10.0)
@@ -187,6 +192,27 @@ class Summary(unittest.TestCase):
         self.assertNotEqual(agg.rounds_row(summary, [0] * 5)["avg_loss"],
                             agg.rounds_row(summary, [0] * 5)["avg_loss"])   # nan in the CSV, as before
         self.assertIn("global loss nan", agg.log_line(summary))
+
+    def test_empty_round_is_marked(self):
+        # Nobody answered: one participant missed, one left during the round
+        summary = agg.round_summary(7, 2, 6, {A, B}, {}, {A}, {B}, 10.0)
+        self.assertIs(summary["empty"], True)
+        self.assertIn('"empty": true', json.dumps(summary, allow_nan=False))   # fog/global/round
+        self.assertIs(agg.rounds_row(summary, [0] * 5)["empty"], True)
+        self.assertTrue(agg.log_line(summary).startswith("EMPTY round 2: 0 of 2 active clients"))
+
+    def test_empty_column_in_rounds_csv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "rounds.csv")
+            full = agg.round_summary(7, 1, 2, {A}, {A: update([1] * 5, 100, loss=0.1, loss_before=0.5)},
+                                     set(), set(), 1.0)
+            empty = agg.round_summary(7, 2, 2, {A}, {}, {A}, set(), 10.0)
+            agg.append_csv(path, agg.rounds_row(full, [1] * 5))
+            agg.append_csv(path, agg.rounds_row(empty, [1] * 5))
+            with open(path, newline="") as f:
+                rows = list(csv.DictReader(f))
+        self.assertEqual([r["empty"] for r in rows], ["False", "True"])
+        self.assertEqual(rows[1]["avg_loss"], "nan")
 
 
 if __name__ == "__main__":

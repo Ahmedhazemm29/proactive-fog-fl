@@ -108,8 +108,8 @@ def round_summary(run, number, rounds, participants, updates, missed, dropped, s
     The round's results as plain JSON types. participants: the clients active
     when the round started; updates: participant -> update of those that
     answered (and stayed); missed: still active but no update in time;
-    dropped: left or went offline during the round. Losses are None when
-    nobody answered.
+    dropped: left or went offline during the round. A round where nobody
+    answered is "empty": its losses are None and the model stays the same.
     """
     used = list(updates.values())
     return {
@@ -117,6 +117,7 @@ def round_summary(run, number, rounds, participants, updates, missed, dropped, s
         "participants": sorted(participants), "answered": sorted(updates),
         "missed": sorted(missed), "dropped": sorted(dropped),
         "round_s": round(seconds, 3),
+        "empty": not used,
         "global_loss": weighted_mean(used, "loss_before") if used else None,
         "avg_loss": weighted_mean(used, "loss") if used else None,
     }
@@ -132,19 +133,22 @@ def log_line(summary):
         note += f", no update from {', '.join(summary['missed'])}"
     if summary["dropped"]:
         note += f", left during the round: {', '.join(summary['dropped'])}"
-    return (f"round {summary['round']}: {len(summary['answered'])} of "
+    prefix = "EMPTY " if summary["empty"] else ""   # nobody answered: the model did not change
+    return (f"{prefix}round {summary['round']}: {len(summary['answered'])} of "
             f"{len(summary['participants'])} active clients, {summary['round_s']:.2f} s, "
             f"global loss {loss(summary['global_loss'])}, avg loss {loss(summary['avg_loss'])}{note}")
 
 
 def rounds_row(summary, weights):
-    """The round's row of rounds.csv. active: participants when the round started."""
+    """The round's row of rounds.csv. active: participants when the round started;
+    empty: True when nobody answered (losses NaN, weights unchanged)."""
     nan = float("nan")
     return {
         "run": summary["run"], "round": summary["round"],
         "time": datetime.now().isoformat(timespec="seconds"),
         "active": len(summary["participants"]), "clients": len(summary["answered"]),
         "missed": len(summary["missed"]), "dropped": len(summary["dropped"]),
+        "empty": summary["empty"],
         "round_s": summary["round_s"],
         "global_loss": nan if summary["global_loss"] is None else summary["global_loss"],
         "avg_loss": nan if summary["avg_loss"] is None else summary["avg_loss"],
