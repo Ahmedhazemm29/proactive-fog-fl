@@ -1,15 +1,17 @@
 """Flash the FL firmware onto ONE ESP32, identified by its MAC, and wait
-for a fresh (not retained) "online" on its fog/<id>/status topic.
+for a fresh (not retained) online status on its fog/<id>/status topic.
 
     python3 hardware/tools/fl_flash_one.py ESP-1 1c:c3:ab:ba:8a:50 /dev/ttyUSB0 \
-        --project ../Autoscaling-fl/esp32
+        --project esp32
 
 Steps:
   1. esptool read_mac on the port: stop unless it is the expected MAC
   2. subscribe to fog/<id>/status (with mqtt_watch.py)
   3. flash the PlatformIO env (default fl) to that port; the flashing tool
      must also report the expected MAC
-  4. wait for a fresh "online" that arrives after the flash finished
+  4. wait for a fresh online status that arrives after the flash finished:
+     "online-standby" (the FL firmware always starts in standby), or plain
+     "online" from the older firmware without join/leave
 
 The FL ID is esp32-<last 2 bytes of the MAC>, as in the FL firmware.
 Exit code 0 = flashed and online; anything else = stop, don't go on.
@@ -26,6 +28,7 @@ from pathlib import Path
 TOOLS_DIR = Path(__file__).resolve().parent
 LOG_DIR = TOOLS_DIR.parent.parent / "data" / "esp_flash"
 ONLINE_TIMEOUT_S = 90  # how long to wait for "online" after the flash
+ONLINE_STATUSES = ("online-standby", "online-active", "online")   # "online": older firmware
 
 
 def find_tool(name, default):
@@ -102,16 +105,16 @@ def main():
     print(f"3. flashed env {args.env} in {t_done - t_start:.0f} s "
           f"({chip}, MAC {upload_macs[0]} during upload)")
 
-    # 4. Wait for a fresh "online" that arrives after the flash finished.
+    # 4. Wait for a fresh online status that arrives after the flash finished.
     # Retained messages and anything from before the flash (the old firmware)
     # don't count.
     while time.time() < t_done + ONLINE_TIMEOUT_S:
         for line in watch_log.read_text().splitlines():
             parts = line.split(" ", 3)
             if (len(parts) == 4 and parts[1] == "fresh" and parts[2] == topic
-                    and parts[3] == "online" and float(parts[0]) > t_done):
+                    and parts[3] in ONLINE_STATUSES and float(parts[0]) > t_done):
                 watcher.kill()
-                print(f"4. fresh 'online' on {topic} {float(parts[0]) - t_done:.1f} s after the flash")
+                print(f"4. fresh '{parts[3]}' on {topic} {float(parts[0]) - t_done:.1f} s after the flash")
                 print("   all messages seen (seconds relative to the end of the flash):")
                 for seen in watch_log.read_text().splitlines():
                     p = seen.split(" ", 3)

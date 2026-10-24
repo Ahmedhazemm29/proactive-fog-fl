@@ -71,38 +71,39 @@ class Boards(unittest.TestCase):
 
     def test_stored_status_alone_is_unknown(self):
         state = new_state()
-        state.on_message(f"fog/{ESP1}/status", b"online", True, 1.0)
+        state.on_message(f"fog/{ESP1}/status", b"online-active", True, 1.0)
         self.assertEqual(board(state, ESP1)["status"], "unknown")
-        self.assertEqual(board(state, ESP1)["stored"], "online")
+        self.assertEqual(board(state, ESP1)["stored"], "online-active")
 
-    def test_fresh_online_and_offline(self):
+    def test_fresh_statuses(self):
         state = new_state()
-        state.on_message(f"fog/{ESP1}/status", b"online", False, 1.0)
-        self.assertEqual(board(state, ESP1)["status"], "online")
-        state.on_message(f"fog/{ESP1}/status", b"offline", False, 2.0)   # the Last Will
-        self.assertEqual(board(state, ESP1)["status"], "offline")
+        for text, shown in [(b"online-standby", "standby"), (b"online-active", "active"),
+                            (b"online", "active"),                     # old firmware: always trained
+                            (b"offline", "offline")]:                  # the Last Will
+            state.on_message(f"fog/{ESP1}/status", text, False, 2.0)
+            self.assertEqual(board(state, ESP1)["status"], shown, text)
         self.assertEqual(board(state, ESP1)["seen"], 2.0)
 
     def test_stored_status_that_disagrees_resets_to_unknown(self):
         state = new_state()
-        state.on_message(f"fog/{ESP1}/status", b"online", False, 1.0)
-        state.on_message(f"fog/{ESP1}/status", b"online", True, 5.0)     # reconnect, same: keep
-        self.assertEqual(board(state, ESP1)["status"], "online")
-        state.on_message(f"fog/{ESP1}/status", b"offline", True, 9.0)    # changed meanwhile
+        state.on_message(f"fog/{ESP1}/status", b"online-active", False, 1.0)
+        state.on_message(f"fog/{ESP1}/status", b"online-active", True, 5.0)   # reconnect, same: keep
+        self.assertEqual(board(state, ESP1)["status"], "active")
+        state.on_message(f"fog/{ESP1}/status", b"online-standby", True, 9.0)  # changed meanwhile
         self.assertEqual(board(state, ESP1)["status"], "unknown")
 
-    def test_fresh_update_means_online(self):
+    def test_fresh_update_means_active(self):
         state = new_state()
         state.on_message(f"fog/{ESP8}/update", update(7, 1, 10, 0.1, 0.2), False, 3.0)
-        self.assertEqual(board(state, ESP8)["status"], "online")
+        self.assertEqual(board(state, ESP8)["status"], "active")
 
     def test_other_boards_only_when_fresh(self):
         state = new_state()
-        state.on_message(f"fog/{ESP7}/status", b"online", True, 1.0)     # skipped, stored only
+        state.on_message(f"fog/{ESP7}/status", b"online-standby", True, 1.0)  # skipped, stored only
         self.assertNotIn(ESP7, [b["fl_id"] for b in state.snapshot(0)["boards"]])
-        state.on_message(f"fog/{ESP7}/status", b"online", False, 2.0)    # live: shown, marked
+        state.on_message(f"fog/{ESP7}/status", b"online-standby", False, 2.0)  # live: shown, marked
         esp7 = board(state, ESP7)
-        self.assertEqual((esp7["name"], esp7["status"], esp7["expected"]), ("ESP-7", "online", False))
+        self.assertEqual((esp7["name"], esp7["status"], esp7["expected"]), ("ESP-7", "standby", False))
 
     def test_sensor_topics_ignored(self):
         state = new_state()
@@ -171,6 +172,69 @@ class Rounds(unittest.TestCase):
         json.loads(json.dumps(state.snapshot(10.0), allow_nan=False))
 
 
+def model_of(run, number, rounds):
+    """A model message of the join/leave aggregator, with the run's total rounds."""
+    return json.dumps({"run": run, "round": number, "rounds": rounds, "weights": [0.0] * 5}).encode()
+
+
+def round_start(run, number, participants):
+    return json.dumps({"phase": "start", "run": run, "round": number, "rounds": 3,
+                       "participants": participants}).encode()
+
+
+def round_end(run, number, participants, answered, missed=(), dropped=(), round_s=0.5):
+    return json.dumps({"phase": "end", "run": run, "round": number, "rounds": 3,
+                       "participants": participants, "answered": answered, "missed": list(missed),
+                       "dropped": list(dropped), "round_s": round_s,
+                       "global_loss": 0.9, "avg_loss": 0.1}).encode()
+
+
+class AggregatorRounds(unittest.TestCase):
+    """The join/leave aggregator's fog/global/round messages."""
+
+    def test_its_numbers_and_the_joins_and_leaves(self):
+        state = new_state()
+        both = [ESP1, ESP8]
+        state.on_message("fog/global/model", model_of(100, 1, 3), False, 10.0)
+        state.on_message("fog/global/round", round_start(100, 1, both), False, 10.0)
+        state.on_message("fog/global/round", round_end(100, 1, both, both, round_s=0.25), False, 10.3)
+        state.on_message("fog/global/model", model_of(100, 2, 3), False, 11.3)
+        state.on_message("fog/global/round", round_start(100, 2, [ESP1]), False, 11.3)      # ESP-8 left
+        state.on_message("fog/global/round", round_end(100, 2, [ESP1], [ESP1]), False, 11.6)
+        state.on_message("fog/global/model", model_of(100, 3, 3), False, 12.6)
+        state.on_message("fog/global/round", round_start(100, 3, both), False, 12.6)        # back again
+        snap = state.snapshot(13.0)
+        first, second, third = snap["rounds"]
+        self.assertEqual(snap["total_rounds"], 3)                 # sent by the aggregator
+        self.assertEqual((first["source"], first["round_s"], first["active"]), ("aggregator", 0.25, 2))
+        self.assertFalse(first["in_progress"])                    # done with its "end" message
+        self.assertEqual((first["joined"], first["left"]), ([], []))
+        self.assertEqual((second["left"], second["active"]), (["ESP-8"], 1))
+        self.assertEqual((third["joined"], third["in_progress"]), (["ESP-8"], True))
+        self.assertEqual(third["missing"], ["ESP-1", "ESP-8"])    # still to answer
+
+    def test_a_board_that_leaves_during_a_running_round(self):
+        state = new_state()
+        state.on_message("fog/global/model", model_of(100, 1, 3), False, 10.0)
+        state.on_message("fog/global/round", round_start(100, 1, [ESP1, ESP8]), False, 10.0)
+        state.on_message(f"fog/{ESP8}/status", b"online-standby", False, 10.1)
+        row = state.snapshot(10.2)["rounds"][0]
+        self.assertEqual((row["missing"], row["dropped"]), (["ESP-1"], ["ESP-8"]))
+        # The aggregator's end message then has the last word
+        state.on_message("fog/global/round",
+                         round_end(100, 1, [ESP1, ESP8], [ESP1], dropped=[ESP8]), False, 10.4)
+        row = state.snapshot(10.5)["rounds"][0]
+        self.assertEqual((row["answered"], row["dropped"], row["source"]), (1, ["ESP-8"], "aggregator"))
+
+    def test_stored_or_foreign_round_messages_are_ignored(self):
+        state = new_state()
+        state.on_message("fog/global/model", model_of(100, 1, 3), False, 10.0)
+        state.on_message("fog/global/round", round_end(100, 1, [ESP1], [ESP1]), True, 10.1)   # stored
+        state.on_message("fog/global/round", round_end(99, 1, [ESP1], [ESP1]), False, 10.2)   # old run
+        row = state.snapshot(10.3)["rounds"][0]
+        self.assertEqual((row["source"], row["in_progress"]), ("dashboard", True))
+
+
 class FakeBroker(threading.Thread):
     """Accepts one client, answers CONNECT and SUBSCRIBE, sends two messages, records everything."""
 
@@ -191,7 +255,7 @@ class FakeBroker(threading.Thread):
             self.received.append(mqtt_listen.read_packet(conn))         # CONNECT
             conn.sendall(bytes([0x20, 2, 0, 0]))                         # CONNACK: accepted
             self.received.append(mqtt_listen.read_packet(conn))         # SUBSCRIBE
-            conn.sendall(bytes([0x90, 5, 0, 1, 0, 0, 0]))                # SUBACK: 3 x QoS 0
+            conn.sendall(bytes([0x90, 6, 0, 1, 0, 0, 0, 0]))             # SUBACK: 4 x QoS 0
             self.publish(conn, f"fog/{ESP1}/status", b"online", retain=True)
             self.publish(conn, f"fog/{ESP8}/status", b"online", retain=False)
             try:
