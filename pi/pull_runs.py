@@ -25,7 +25,7 @@ import csv
 import shutil
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 PI_DATA = "pi5@fognode1.local:fog/pi/fl-data/"
@@ -100,12 +100,46 @@ def organize(mirror_dir, runs_dir):
     return done
 
 
+def last_round_time(folder):
+    """
+    Epoch time of the run's last round in its rounds.csv, or None without
+    rounds. The aggregator writes the time in UTC (the container's clock).
+    """
+    path = folder / "rounds.csv"
+    if not path.exists():
+        return None
+    with open(path, newline="") as f:
+        times = [row.get("time", "") for row in csv.DictReader(f)]
+    try:
+        last = datetime.fromisoformat(times[-1]).replace(tzinfo=timezone.utc)
+    except (IndexError, ValueError):
+        return None
+    return last.timestamp()
+
+
+def run_of_command(row, starts, ends):
+    """
+    The run a command belongs to. Its "run" column if fl_control.py knew the
+    run. Otherwise (no global model yet: the run was still waiting for its
+    first clients, or no run at all) the run going on at that time: started
+    before the command and had a round at or after it. Else the next run that
+    started after it, or None if there is none yet. A run without rounds never
+    claims a command: it was replaced before its joins took effect.
+    """
+    if row["run"]:
+        return int(row["run"])
+    epoch = float(row["epoch"])
+    for start in starts:
+        if start <= epoch and ends.get(start) is not None and epoch <= ends[start]:
+            return start
+    return next((start for start in starts if start >= epoch), None)
+
+
 def assign_commands(runs_dir):
     """
     Write each run folder's control.csv from data/fl-runs/control.csv, the log
-    of hardware/tools/fl_control.py. A command belongs to the run that was
-    going on (its "run" column) or, if none was, to the next run that started
-    after it. Returns {run: number of commands}.
+    of hardware/tools/fl_control.py (see run_of_command for which run a
+    command belongs to). Returns {run: number of commands}.
     """
     log = runs_dir / "control.csv"
     if not log.exists():
@@ -113,11 +147,12 @@ def assign_commands(runs_dir):
     with open(log, newline="") as f:
         reader = csv.DictReader(f)
         rows, fields = list(reader), reader.fieldnames
-    starts = sorted(run for run in map(run_of_folder, runs_dir.iterdir()) if run is not None)
+    folders = {run_of_folder(folder): folder for folder in runs_dir.iterdir()}
+    starts = sorted(run for run in folders if run is not None)
+    ends = {run: last_round_time(folders[run]) for run in starts}
     per_run = {}
     for row in rows:
-        run = int(row["run"]) if row["run"] else next(
-            (start for start in starts if start >= float(row["epoch"])), None)
+        run = run_of_command(row, starts, ends)
         if run is not None:
             per_run.setdefault(run, []).append(row)   # None: the run hasn't started yet
     counts = {}

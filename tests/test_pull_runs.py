@@ -8,6 +8,7 @@ import io
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -18,6 +19,11 @@ import pull_runs                                  # noqa: E402
 R1, R2, R3 = 1792700000, 1792750000, 1792800000
 ROUNDS = ["run", "round", "time", "clients", "missed", "round_s", "global_loss", "avg_loss", "weights"]
 UPDATES = ["run", "round", "client", "num_samples", "loss", "loss_before"]
+
+
+def utc(epoch):
+    """A time as the aggregator writes it in rounds.csv: ISO, UTC, no zone."""
+    return datetime.fromtimestamp(epoch, timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds")
 
 
 def write_csv(path, fields, rows):
@@ -108,6 +114,41 @@ class Commands(unittest.TestCase):
             self.assertEqual(pull_runs.assign_commands(runs), {R1: 1, R2: 2})
             second = read_csv(runs / pull_runs.run_folder_name(R2) / "control.csv")
             self.assertEqual([r["board"] for r in second], ["ESP-5", "ESP-1"])
+
+    def test_commands_while_a_run_waits_for_its_first_clients(self):
+        # 2026-10-24: the run was deployed first and the boards joined while it
+        # waited (no model yet, so no run in the log). Those joins belong to it,
+        # not to the next run.
+        with tempfile.TemporaryDirectory() as tmp:
+            runs = Path(tmp)
+            for run, first, last in ((R1, R1 + 12, R1 + 19), (R2, R2 + 5, R2 + 10)):
+                write_csv(runs / pull_runs.run_folder_name(run) / "rounds.csv", ["run", "round", "time"],
+                          [{"run": run, "round": 1, "time": utc(first)},
+                           {"run": run, "round": 2, "time": utc(last)}])
+            (runs / pull_runs.run_folder_name(R3)).mkdir()                      # no rounds yet
+            fields = ["time", "epoch", "run", "command", "board", "fl_id", "result", "answer_s"]
+            rows = [
+                {"epoch": R1 + 7, "run": "", "command": "join", "board": "ESP-1"},    # R1 waiting
+                {"epoch": R1 + 15, "run": R1, "command": "join", "board": "ESP-5"},   # R1 running
+                {"epoch": R1 + 300, "run": "", "command": "join", "board": "ESP-2"},  # R1 done: next run
+                {"epoch": R3 + 4, "run": "", "command": "join", "board": "ESP-3"},    # R3 waiting, no rounds
+            ]
+            write_csv(runs / "control.csv", fields, rows)
+            self.assertEqual(pull_runs.assign_commands(runs), {R1: 2, R2: 1})
+            first = read_csv(runs / pull_runs.run_folder_name(R1) / "control.csv")
+            self.assertEqual([r["board"] for r in first], ["ESP-1", "ESP-5"])
+            # Once R3 has rounds, the join sent while it waited goes to R3
+            write_csv(runs / pull_runs.run_folder_name(R3) / "rounds.csv", ["run", "round", "time"],
+                      [{"run": R3, "round": 1, "time": utc(R3 + 9)}])
+            self.assertEqual(pull_runs.assign_commands(runs), {R1: 2, R2: 1, R3: 1})
+
+    def test_last_round_time_is_utc(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            self.assertIsNone(pull_runs.last_round_time(folder))
+            write_csv(folder / "rounds.csv", ["run", "round", "time"],
+                      [{"run": R1, "round": 1, "time": "2026-10-24T10:12:06"}])
+            self.assertEqual(pull_runs.last_round_time(folder), 1792836726)
 
 
 class EndToEnd(unittest.TestCase):

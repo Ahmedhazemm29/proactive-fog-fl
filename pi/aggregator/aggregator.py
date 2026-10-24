@@ -67,6 +67,16 @@ NUM_WEIGHTS = 5                                          # bias + 4 weights
 # old firmware without join/leave, which always trained.
 ACTIVE_STATUSES = ("online-active", "online")
 
+# The MQTT thread and the main loop both print. print() writes the text and the
+# newline separately, so two threads could glue their lines together: one lock.
+LOG_LOCK = threading.Lock()
+
+
+def log(line):
+    """Print one whole line, never mixed with another thread's."""
+    with LOG_LOCK:
+        print(line, flush=True)
+
 
 # ----------------------------------------------------------------------
 # Messages and FedAvg (no MQTT here, so they can be tested on their own)
@@ -216,7 +226,7 @@ class RoundState:
     def wait_for_clients(self, count):
         with self.changed:
             while len(self.active) < count:
-                print(f"waiting for clients: {len(self.active)} of {count} active", flush=True)
+                log(f"waiting for clients: {len(self.active)} of {count} active")
                 self.changed.wait(timeout=10)
 
     def wait_for_updates(self, timeout):
@@ -258,11 +268,11 @@ def main():
 
     def on_connect(client, userdata, flags, reason_code, properties):
         if reason_code.is_failure:
-            print(f"mqtt: connect failed: {reason_code}", flush=True)
+            log(f"mqtt: connect failed: {reason_code}")
             return
         # Subscribe again after every connect: the broker forgets it on a drop
         client.subscribe([("fog/+/status", 1), ("fog/+/update", 1)])
-        print(f"mqtt: connected to {MQTT_HOST}:{MQTT_PORT}", flush=True)
+        log(f"mqtt: connected to {MQTT_HOST}:{MQTT_PORT}")
 
     def on_message(client, userdata, message):
         if not message.topic.startswith("fog/esp32-"):
@@ -271,14 +281,14 @@ def main():
         if message.topic.endswith("/status"):
             text = message.payload.decode(errors="replace")
             if state.on_status(sender, text):
-                print(f"status: {sender} is now {text or '(cleared)'}", flush=True)
+                log(f"status: {sender} is now {text or '(cleared)'}")
         elif message.topic.endswith("/update"):
             update = parse_update(message.payload)
             if update is None:
-                print(f"bad update from {sender}: {message.payload[:80]!r}", flush=True)
+                log(f"bad update from {sender}: {message.payload[:80]!r}")
             elif not state.on_update(sender, update):
-                print(f"update from {sender} (round {update.get('round')}) ignored: "
-                      "another round, or not a participant", flush=True)
+                log(f"update from {sender} (round {update.get('round')}) ignored: "
+                    "another round, or not a participant")
 
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="fl-aggregator")
     client.on_connect = on_connect
@@ -286,8 +296,8 @@ def main():
     client.reconnect_delay_set(min_delay=1, max_delay=5)
     client.connect_async(MQTT_HOST, MQTT_PORT)
     client.loop_start()
-    print(f"aggregator: run {run}, rounds {ROUNDS or 'no limit'}, at least {MIN_CLIENTS} active "
-          f"client(s), round timeout {ROUND_TIMEOUT_S:g} s, data in {run_dir}", flush=True)
+    log(f"aggregator: run {run}, rounds {ROUNDS or 'no limit'}, at least {MIN_CLIENTS} active "
+        f"client(s), round timeout {ROUND_TIMEOUT_S:g} s, data in {run_dir}")
 
     number = 0
     while ROUNDS == 0 or number < ROUNDS:
@@ -306,7 +316,7 @@ def main():
                                 time.monotonic() - started)
         if updates:
             weights = fedavg(list(updates.values()))   # nobody answered: keep the model
-        print(log_line(summary), flush=True)
+        log(log_line(summary))
         append_csv(os.path.join(run_dir, "rounds.csv"), rounds_row(summary, weights))
         for sender, u in sorted(updates.items()):
             append_csv(os.path.join(run_dir, "updates.csv"), {
@@ -319,8 +329,7 @@ def main():
     client.publish(MODEL_TOPIC, payload=None, qos=1, retain=True).wait_for_publish(timeout=5)
     client.loop_stop()
     client.disconnect()
-    print(f"aggregator: {number} rounds done, final weights {[round(w, 4) for w in weights]}",
-          flush=True)
+    log(f"aggregator: {number} rounds done, final weights {[round(w, 4) for w in weights]}")
 
 
 if __name__ == "__main__":
