@@ -1,6 +1,6 @@
 # esp32
 
-The edge clients: ESP32-WROOM-32 boards (PlatformIO, board `esp32dev`, Arduino framework). They find the broker on the Pi as `fognode1.local` (mDNS) and reconnect by themselves. Two firmwares share this folder:
+The edge clients: ESP32-WROOM-32 boards (PlatformIO, board `esp32dev`, Arduino framework). They find the broker on the Pi as `fognode1.local` (mDNS) and reconnect by themselves. Three firmwares share this folder:
 
 - `src/fl/main.cpp` (env `fl`, the default): federated learning client.
   - **ID:** taken from the chip's MAC, `esp32-<last 4 hex>`. It is the MQTT client ID, the mDNS name and part of the topics, so every board gets the same firmware.
@@ -8,6 +8,7 @@ The edge clients: ESP32-WROOM-32 boards (PlatformIO, board `esp32dev`, Arduino f
   - **Model:** linear regression that predicts the next value from the last 4 (4 weights and a bias), trained with SGD on the board (5 epochs per round, learning rate 0.01).
   - **Secure aggregation:** `protect_update()` is the marked hook where it will go; for now it passes the weights through.
 - `src/sensor/main.cpp` (env `sensor`): publishes fake sensor values on `fog/client<ID>/data` at a rate set live on `fog/client<ID>/control`. It feeds the Pi's MQTT worker (`workload/mqtt_worker.py`).
+- `src/secagg_bench/` (env `secagg_bench`): not an FL client. A one-off benchmark for one test board: it times the client side of pairwise masking and Paillier, records the free heap and publishes the messages once on `bench/<id>/...` so their size can be measured. Results and how to run it: `results/secagg_benchmark/report.md`.
 - `lib/fognet/`: Wi-Fi, the mDNS lookup of the broker and MQTT with a Last Will, all reconnecting by themselves. Used by the FL client.
 - `include/secrets.example.h`: copy it to `include/secrets.h` and fill in the Wi-Fi. `secrets.h` is git-ignored.
 

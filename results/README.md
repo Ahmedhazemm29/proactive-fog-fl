@@ -8,5 +8,6 @@ This folder holds the reports, tables, plots and CSVs of every step. Each report
 - `autoscaler/`: step 4A, the main simulation, like Dogani's Table 11 (`table11.md`).
 - `autoscaler_fair/`: step 4A with the same Pods_min for KHPA and the planner, 1 or 5.
 - `autoscaler_sensitivity/`: step 4A, the grid of traffic level, threshold and KHPA's Pods_min (`sensitivity.md`).
+- `secagg_benchmark/`: phase 2, decision support: the cost per round of FedAvg, pairwise masking and Paillier, measured on the Pi 5 (aggregator, 4 to 50 clients, `pi5/`) and on one ESP32 (client time, free heap and real message sizes, `esp32/`). See `report.md`.
 - `autoscaler_live/`: step 4B, the live demo. `windows_report.md` covers all four windows. The first window's files are at the top, and `calm/`, `rise/` and `spiky/` hold the other three. `khpa_old_cpu_read/` in each window keeps the KHPA runs from before decision 4B.14.
 - `profiles_summary.md`, `comparison.md`, `sine/`, `sine_ablation/`, `noisy_sine/` and `bursts/`: earlier part, the reactive and proactive CPU controllers under each load profile.
