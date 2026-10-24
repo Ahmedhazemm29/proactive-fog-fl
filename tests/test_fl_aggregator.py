@@ -164,6 +164,49 @@ class Rounds(unittest.TestCase):
         self.assertTrue(done.wait(2))
 
 
+class StoredStatuses(unittest.TestCase):
+
+    def test_round_1_waits_for_every_stored_status(self):
+        # 2026-10-24 smoke test: 4 boards joined, MIN_CLIENTS 3. The stored
+        # statuses came in a few ms apart, and round 1 started after the third,
+        # without ESP-4. Now round 1 starts only once the statuses are quiet.
+        state = agg.RoundState(run=7)
+        quiet = 0.3
+
+        def broker():
+            state.on_subscribed()                            # SUBACK, then the stored statuses
+            for client in (A, B, C, D):
+                time.sleep(0.02)
+                state.on_status(client, "online-active")
+
+        threading.Thread(target=broker, daemon=True).start()
+        started = time.monotonic()
+        self.assertEqual(state.wait_for_stored_statuses(quiet), 4)
+        self.assertGreaterEqual(time.monotonic() - started, 0.08 + quiet - 0.01)
+        state.wait_for_clients(3)                            # already 4: no waiting
+        self.assertEqual(state.start_round(1), {A, B, C, D})
+
+    def test_waits_for_the_subscription_first(self):
+        state = agg.RoundState(run=7)
+        done = threading.Event()
+
+        def wait():
+            state.wait_for_stored_statuses(0.05)
+            done.set()
+
+        threading.Thread(target=wait, daemon=True).start()
+        self.assertFalse(done.wait(0.3))                    # not subscribed yet: keeps waiting
+        state.on_subscribed()
+        self.assertTrue(done.wait(2))                       # no stored statuses at all: 0.05 s later
+
+    def test_a_second_subscription_does_not_restart_the_wait(self):
+        state = agg.RoundState(run=7)
+        state.on_subscribed()
+        first = state.subscribed_at
+        state.on_subscribed()                               # e.g. after a reconnect
+        self.assertEqual(state.subscribed_at, first)
+
+
 class SlowOutput(io.StringIO):
     """stdout that waits a little in every write, like a pipe: other threads run in between."""
 

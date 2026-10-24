@@ -11,6 +11,8 @@ The fog node: a Raspberry Pi 5 (arm64, 4 GB, `pi5@fognode1.local`) that runs the
 
 It tracks the clients from their `fog/<id>/status` messages: `online-active` (and the older firmware's plain `online`) means active, `online-standby` or `offline` means not. Every board starts in standby; `hardware/tools/fl_control.py join ESP-1 ...` makes it active.
 
+Before round 1 it reads every stored status: after subscribing it waits until no status has come in for 1 s (`STATUS_QUIET_S`), so round 1 includes every board that is already active, not just the first `FL_MIN_CLIENTS` of them.
+
 Each round:
 1. It waits until at least `FL_MIN_CLIENTS` clients are **active**.
 2. The clients active at that moment are the round's participants. A client that joins later waits for the next round.
