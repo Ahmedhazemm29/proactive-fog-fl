@@ -1,11 +1,11 @@
 """
 The chart of results/secagg_benchmark/report.md: the aggregator's CPU time per
-round on a Raspberry Pi 5, estimated from the laptop timings of
-scripts/secagg_benchmark.py (laptop time x PI5_FACTOR).
+round, measured on the Raspberry Pi 5 (fognode1) with scripts/secagg_benchmark.py.
 
     .venv/bin/python -I scripts/plot_secagg_benchmark.py
 
-Reads results/secagg_benchmark/timings.csv, writes server_cost.png next to it.
+Reads results/secagg_benchmark/pi5/timings.csv, writes
+results/secagg_benchmark/server_cost.png.
 """
 import csv
 from pathlib import Path
@@ -16,7 +16,6 @@ import matplotlib.pyplot as plt             # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "results" / "secagg_benchmark"
-PI5_FACTOR = 3.5     # laptop core (i7-13620H) vs Pi 5 core, single-core Geekbench 6 (see the report)
 
 # (method, key_bits) -> label and line style
 LINES = [
@@ -31,28 +30,28 @@ LINES = [
 
 
 def main():
-    with open(OUT / "timings.csv", newline="") as f:
+    with open(OUT / "pi5" / "timings.csv", newline="") as f:
         rows = [r for r in csv.DictReader(f) if r["side"] == "server"]
 
     fig, ax = plt.subplots(figsize=(10, 5))
     for (method, bits), label, style, marker in LINES:
-        points = sorted((int(r["clients"]), float(r["cpu_ms"]) * PI5_FACTOR)
+        points = sorted((int(r["clients"]), float(r["cpu_ms"]))
                         for r in rows if r["method"] == method and r["key_bits"] == bits)
         ax.plot([p[0] for p in points], [p[1] for p in points], style, marker=marker, label=label)
 
     # One round per second: 10 ms = 1% and 100 ms = 10% of one Pi 5 core
-    for ms, text, y in ((10, "1% of one Pi 5 core at 1 round/s", 11.5),
-                        (100, "10% of one Pi 5 core at 1 round/s", 82)):
+    for ms, text, y in ((10, "1% of one Pi 5 core at 1 round/s", 7.6),
+                        (100, "10% of one Pi 5 core at 1 round/s", 118)):
         ax.axhline(ms, color="grey", linewidth=0.8, linestyle=":")
-        ax.text(13, y, text, color="grey", fontsize=8, ha="center")
+        ax.text(4.2, y, text, color="grey", fontsize=8, ha="left")   # left, in a gap between lines
 
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xticks([4, 7, 10, 20, 50])
     ax.set_xticklabels(["4", "7", "10", "20", "50"])
     ax.set_xlabel("Clients per round")
-    ax.set_ylabel(f"Aggregator CPU time per round on a Pi 5 [ms]\n(estimate: laptop x {PI5_FACTOR})")
-    ax.set_title("Aggregation cost per round, 5-weight model")
+    ax.set_ylabel("Aggregator CPU time per round [ms]")
+    ax.set_title("Aggregation cost per round on the Raspberry Pi 5 (measured), 5-weight model")
     ax.grid(True, which="major", alpha=0.3)
     ax.legend(fontsize=8, loc="upper left", bbox_to_anchor=(1.01, 1))   # outside: no line hidden
     fig.tight_layout()

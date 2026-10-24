@@ -1,0 +1,88 @@
+1792829015.042 RESULT x25519_agreement_plus_sha256 us=131364 free_before=109372 free_after=109216 min_free=108192 ret=0
+1792829015.170 CHECK x25519 both sides agree: yes
+1792829015.435 RESULT masking_n7_1_advertise us=258427 free_before=106288 free_after=105836 min_free=104888 ret=0
+1792829016.253 RESULT masking_n7_2_share_keys us=817118 free_before=105812 free_after=105788 min_free=102292 ret=0
+1792829017.053 RESULT masking_n7_3_masked_input us=796543 free_before=105764 free_after=105752 min_free=102428 ret=0
+1792829017.056 CHECK masking_n7: shares decrypted and authenticated: yes
+1792829017.059 RESULT masking_n7_total us=1872088
+1792829017.335 RESULT masking_n50_1_advertise us=258930 free_before=82568 free_after=82128 min_free=81372 ret=0
+1792829025.049 RESULT masking_n50_2_share_keys us=7712622 free_before=82116 free_after=82080 min_free=76368 ret=0
+1792829031.545 RESULT masking_n50_3_masked_input us=6493559 free_before=82068 free_after=82032 min_free=78832 ret=0
+1792829031.548 CHECK masking_n50: shares decrypted and authenticated: yes
+1792829031.551 RESULT masking_n50_total us=14465111
+1792829031.621 [paillier 2048] n^2 = n*n with mbedTLS: ret=0, 4095 bits
+1792829031.705 RESULT paillier2048_key_setup_once us=80144 free_before=82452 free_after=78852 min_free=72832 ret=0
+1792829032.101 RESULT paillier2048_mbedtls_first_exp_mod us=394796 free_before=78812 free_after=77648 min_free=72780 ret=0
+1792829034.349 RESULT paillier2048_6ct_mbedtls_hw us=2247609 free_before=77528 free_after=72136 min_free=67228 ret=0
+1792829450.719 RESULT paillier2048_6ct_software us=416362887 free_before=73064 free_after=69816 min_free=62336 ret=0
+1792829451.098 RESULT paillier2048_packed_mbedtls_hw us=370343 free_before=69228 free_after=68404 min_free=63260 ret=0
+1792829520.498 RESULT paillier2048_packed_software us=69396129 free_before=68360 free_after=67824 min_free=60324 ret=0
+1792829520.500 [paillier 3072] n^2 = n*n with mbedTLS: ret=0, 6144 bits
+1792829520.709 RESULT paillier3072_key_setup_once us=208984 free_before=67600 free_after=62340 min_free=53452 ret=0
+1792829520.717 RESULT paillier3072_mbedtls_first_exp_mod us=145 free_before=62296 free_after=62228 min_free=62228 ret=-14
+1792829520.725 RESULT paillier3072_6ct_mbedtls_hw us=295 free_before=61300 free_after=61320 min_free=60896 ret=-14
+1792830912.807 RESULT paillier3072_6ct_software us=1392090249 free_before=61260 free_after=56448 min_free=47800 ret=0
+1792830912.818 RESULT paillier3072_packed_mbedtls_hw us=841 free_before=55596 free_after=55608 min_free=53140 ret=-14
+1792831144.832 RESULT paillier3072_packed_software us=232015154 free_before=55556 free_after=54756 min_free=46104 ret=0
+1792831144.834 [bench] measuring done, publishing the messages
+1792831145.844 [mqtt] connecting to 192.168.1.209:1883 as esp32-4470-bench ...
+1792831145.869 [mqtt] connected
+1792831145.872 [bench] MQTT connected
+1792831145.877 [bench] published fedavg_update (144 bytes): ok
+1792831146.080 [bench] published masking_n7_1_advertise (136 bytes): ok
+1792831146.284 [bench] published masking_n7_2_shares (1431 bytes): ok
+1792831146.488 [bench] published masking_n7_3_masked_input (158 bytes): ok
+1792831146.691 [bench] published masking_n7_4_unmask_0_dropped (769 bytes): ok
+1792831146.894 [bench] published masking_n7_4_unmask_1_dropped (768 bytes): ok
+1792831147.097 [bench] published masking_n50_1_advertise (136 bytes): ok
+1792831147.317 [bench] published masking_n50_2_shares (11407 bytes): ok
+1792831147.521 [bench] published masking_n50_3_masked_input (157 bytes): ok
+1792831147.727 [bench] published masking_n50_4_unmask_0_dropped (5241 bytes): ok
+1792831147.932 [bench] published masking_n50_4_unmask_5_dropped (5240 bytes): ok
+1792831148.136 [bench] published paillier2048_6ct_mbedtls_hw (4172 bytes): ok
+1792831148.341 [bench] published paillier2048_6ct_software (4172 bytes): ok
+1792831148.544 [bench] published paillier2048_packed_mbedtls_hw (735 bytes): ok
+1792831148.747 [bench] published paillier2048_packed_software (735 bytes): ok
+1792831148.968 [bench] published paillier3072_6ct_software (6212 bytes): ok
+1792831149.171 [bench] published paillier3072_packed_software (1075 bytes): ok
+1792831149.377 SUMMARY board esp32-4470, CPU 240 MHz, heap total 276320, stack high-water 29796 bytes
+1792831149.385 RESULT x25519_keygen us=128246 free_before=109788 free_after=109640 min_free=108456 ret=0
+1792831149.394 RESULT x25519_agreement_plus_sha256 us=131364 free_before=109372 free_after=109216 min_free=108192 ret=0
+1792831149.402 RESULT masking_n7_1_advertise us=258427 free_before=106288 free_after=105836 min_free=104888 ret=0
+1792831149.413 RESULT masking_n7_2_share_keys us=817118 free_before=105812 free_after=105788 min_free=102292 ret=0
+1792831149.421 RESULT masking_n7_3_masked_input us=796543 free_before=105764 free_after=105752 min_free=102428 ret=0
+1792831149.427 RESULT masking_n7_total us=1872088 free_before=0 free_after=0 min_free=0 ret=0
+1792831149.435 RESULT masking_n50_1_advertise us=258930 free_before=82568 free_after=82128 min_free=81372 ret=0
+1792831149.443 RESULT masking_n50_2_share_keys us=7712622 free_before=82116 free_after=82080 min_free=76368 ret=0
+1792831149.452 RESULT masking_n50_3_masked_input us=6493559 free_before=82068 free_after=82032 min_free=78832 ret=0
+1792831149.460 RESULT masking_n50_total us=14465111 free_before=0 free_after=0 min_free=0 ret=0
+1792831149.468 RESULT paillier2048_key_setup_once us=80144 free_before=82452 free_after=78852 min_free=72832 ret=0
+1792831149.476 RESULT paillier2048_mbedtls_first_exp_mod us=394796 free_before=78812 free_after=77648 min_free=72780 ret=0
+1792831149.487 RESULT paillier2048_6ct_mbedtls_hw us=2247609 free_before=77528 free_after=72136 min_free=67228 ret=0
+1792831149.496 RESULT paillier2048_6ct_software us=416362887 free_before=73064 free_after=69816 min_free=62336 ret=0
+1792831149.504 RESULT paillier2048_packed_mbedtls_hw us=370343 free_before=69228 free_after=68404 min_free=63260 ret=0
+1792831149.512 RESULT paillier2048_packed_software us=69396129 free_before=68360 free_after=67824 min_free=60324 ret=0
+1792831149.523 RESULT paillier3072_key_setup_once us=208984 free_before=67600 free_after=62340 min_free=53452 ret=0
+1792831149.531 RESULT paillier3072_mbedtls_first_exp_mod us=145 free_before=62296 free_after=62228 min_free=62228 ret=-14
+1792831149.540 RESULT paillier3072_6ct_mbedtls_hw us=295 free_before=61300 free_after=61320 min_free=60896 ret=-14
+1792831149.548 RESULT paillier3072_6ct_software us=1392090249 free_before=61260 free_after=56448 min_free=47800 ret=0
+1792831149.556 RESULT paillier3072_packed_mbedtls_hw us=841 free_before=55596 free_after=55608 min_free=53140 ret=-14
+1792831149.567 RESULT paillier3072_packed_software us=232015154 free_before=55556 free_after=54756 min_free=46104 ret=0
+1792831149.570 MESSAGE fedavg_update bytes=144 sent=yes
+1792831149.576 MESSAGE masking_n7_1_advertise bytes=136 sent=yes
+1792831149.578 MESSAGE masking_n7_2_shares bytes=1431 sent=yes
+1792831149.584 MESSAGE masking_n7_3_masked_input bytes=158 sent=yes
+1792831149.587 MESSAGE masking_n7_4_unmask_0_dropped bytes=769 sent=yes
+1792831149.592 MESSAGE masking_n7_4_unmask_1_dropped bytes=768 sent=yes
+1792831149.598 MESSAGE masking_n50_1_advertise bytes=136 sent=yes
+1792831149.601 MESSAGE masking_n50_2_shares bytes=11407 sent=yes
+1792831149.606 MESSAGE masking_n50_3_masked_input bytes=157 sent=yes
+1792831149.612 MESSAGE masking_n50_4_unmask_0_dropped bytes=5241 sent=yes
+1792831149.617 MESSAGE masking_n50_4_unmask_5_dropped bytes=5240 sent=yes
+1792831149.623 MESSAGE paillier2048_6ct_mbedtls_hw bytes=4172 sent=yes
+1792831149.625 MESSAGE paillier2048_6ct_software bytes=4172 sent=yes
+1792831149.631 MESSAGE paillier2048_packed_mbedtls_hw bytes=735 sent=yes
+1792831149.636 MESSAGE paillier2048_packed_software bytes=735 sent=yes
+1792831149.639 MESSAGE paillier3072_6ct_software bytes=6212 sent=yes
+1792831149.645 MESSAGE paillier3072_packed_software bytes=1075 sent=yes
+1792831149.645 BENCH DONE

@@ -1,0 +1,23 @@
+1792826808.396 RESULT x25519_agreement_plus_sha256 us=153126 free_before=109380 free_after=109244 min_free=108272 ret=0
+1792826808.542 CHECK x25519 both sides agree: yes
+1792826808.850 RESULT masking_n7_1_advertise us=301299 free_before=106324 free_after=105868 min_free=105044 ret=0
+1792826809.788 RESULT masking_n7_2_share_keys us=936328 free_before=105852 free_after=105820 min_free=104860 ret=0
+1792826810.706 RESULT masking_n7_3_masked_input us=915729 free_before=105804 free_after=105772 min_free=102344 ret=0
+1792826810.709 CHECK masking_n7: shares decrypted and authenticated: yes
+1792826810.712 RESULT masking_n7_total us=2153356
+1792826811.032 RESULT masking_n50_1_advertise us=303353 free_before=82600 free_after=82152 min_free=81376 ret=0
+1792826819.865 RESULT masking_n50_2_share_keys us=8831628 free_before=82140 free_after=81908 min_free=76368 ret=0
+1792826827.391 RESULT masking_n50_3_masked_input us=7522783 free_before=81896 free_after=82056 min_free=76344 ret=0
+1792826827.393 CHECK masking_n50: shares decrypted and authenticated: yes
+1792826827.397 RESULT masking_n50_total us=16657764
+1792826827.464 [paillier 2048] n^2 = n*n with mbedTLS: ret=0, 4095 bits
+1792826827.549 RESULT paillier2048_key_setup_once us=81616 free_before=82480 free_after=78880 min_free=72860 ret=0
+1792826827.947 RESULT paillier2048_mbedtls_first_exp_mod us=396349 free_before=78848 free_after=77656 min_free=72812 ret=0
+1792826830.203 RESULT paillier2048_6ct_mbedtls_hw us=2254641 free_before=77556 free_after=72168 min_free=67256 ret=0
+1792827246.552 RESULT paillier2048_6ct_software us=416352957 free_before=73104 free_after=69860 min_free=62276 ret=0
+1792827246.932 RESULT paillier2048_packed_mbedtls_hw us=372213 free_before=69240 free_after=68448 min_free=63300 ret=0
+1792827316.326 RESULT paillier2048_packed_software us=69391188 free_before=68404 free_after=67868 min_free=60228 ret=0
+1792827316.329 [paillier 3072] n^2 = n*n with mbedTLS: ret=0, 6144 bits
+1792827316.539 RESULT paillier3072_key_setup_once us=211171 free_before=67644 free_after=62384 min_free=53496 ret=0
+1792827316.547 RESULT paillier3072_mbedtls_first_exp_mod us=161 free_before=62344 free_after=62280 min_free=62280 ret=-14
+1792827316.555 RESULT paillier3072_6ct_mbedtls_hw us=291 free_before=61324 free_after=61340 min_free=60920 ret=-14

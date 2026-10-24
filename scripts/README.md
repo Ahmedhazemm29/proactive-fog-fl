@@ -14,5 +14,5 @@ This folder holds one command-line script per task. Run them from the repo root 
 - `live_run.py`: step 4B, one live run of one scaler.
 - `live_report.py`, `live_windows_report.py`: step 4B, the report of one window and of all windows.
 - `run_experiments.py`, `set_load.py`, `control_page.py`: earlier part, the controller runs and the load of the two workers.
-- `secagg_benchmark.py`, `plot_secagg_benchmark.py`: phase 2, decision support: the CPU cost per FL round of FedAvg, pairwise masking and Paillier (laptop only; report in `results/secagg_benchmark/`). They run in their own venv with `requirements-secagg.txt`.
+- `secagg_benchmark.py`, `plot_secagg_benchmark.py`, `secagg_esp32_tools.py`: phase 2, decision support: the cost per FL round of FedAvg, pairwise masking and Paillier. `secagg_benchmark.py` runs on the Pi for the aggregator's cost; `secagg_esp32_tools.py` makes the test keys, measures the message sizes and checks the ciphertexts of the ESP32 benchmark firmware (`esp32/src/secagg_bench/`). Report in `results/secagg_benchmark/`. They run in their own venv with `requirements-secagg.txt`.
 - `requirements.txt`: the Python packages of steps 1 to 4A.
