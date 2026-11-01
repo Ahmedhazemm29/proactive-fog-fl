@@ -3,6 +3,7 @@
 This folder holds the reports, tables, plots and CSVs of every step. Each report names the script and the settings that made it. The raw data behind them is in `data/`, which git ignores.
 
 - `predictors/`: step 3, the predictors compared like Dogani's Table 8 (`table8.md`). `predictors/seeds/` retrains its 4 models with seeds 1, 2 and 3 and compares them with seed 0, the Table 8 run (`summary.md`). `predictors/random_windows/` scores its models on 30 random one-day windows of the test part (`summary.md`).
+- `task1/`: step 3, task 1: both checks of Table 8 side by side (`tables.md`, `figures/`), written up in `docs/task1_summary.md`.
 - `predictors_patience5/`: step 3 with early-stopping patience 5, kept for decision 3.8.
 - `predictor_gap/`: step 3, checks and small experiments on the gap to Dogani's MAPE (decisions 3.11 and 3.12, findings 4.19 to 4.26). `mape_readings.md` compares every way to compute MAPE.
 - `autoscaler/`: step 4A, the main simulation, like Dogani's Table 11 (`table11.md`).
