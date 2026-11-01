@@ -6,6 +6,7 @@ This folder holds the unit tests. Run all of them from the repo root with `.venv
 - `test_predictors.py`: step 3, the data, the models, FedAvg and the metrics.
 - `test_predictor_seeds.py`: step 3, the Table 8 seed check.
 - `test_table8_random_windows.py`: step 3, Table 8 on random windows.
+- `test_milan_areas.py`: phase 2, the Milan area exploration (profiles, cut-off, k-means, block choice).
 - `test_mape.py`: step 3, every way to compute MAPE of decision 3.12, on minutes with a known answer.
 - `test_autoscaler.py`: step 4A, the scalers and the metrics.
 - `test_live.py`: step 4B, the load generator timing, the scaler steps, the fresh CPU read and the cluster safety.
