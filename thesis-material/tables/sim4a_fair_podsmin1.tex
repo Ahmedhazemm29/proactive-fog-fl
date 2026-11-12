@@ -1,0 +1,28 @@
+% Source: results/autoscaler_fair/pods_min_1/table11.md
+\begin{table}[ht]
+\centering
+\small
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccccc}
+\toprule
+Scaler & $\theta_U$ (\%) & $\theta_O$ (\%) & $T_U$ (\%) & $T_O$ (\%) & $\epsilon_n$ & \#Scale\_Up & \#Scale\_Down \\
+\midrule
+No autoscaling & 19.05 & 149.34 & 37.98 & 60.29 & 1.00 & 0 & 0 \\
+KHPA & 2.47 & 2.43 & 24.11 & 20.20 & 6.84 & 1,962.6 & 1,958.4 \\
+FedAvg-BiGRU & 0.57 & 11.18 & 8.93 & 57.20 & 6.69 & 905.6 & 881.2 \\
+FedAvg-LSTM & 0.59 & 11.26 & 9.52 & 56.47 & 6.54 & 914.5 & 887.5 \\
+CentralBiGRU & 0.57 & 11.25 & 7.92 & 58.31 & 6.82 & 708.0 & 847.8 \\
+CentralLSTM & 0.70 & 11.48 & 10.69 & 54.77 & 6.10 & 844.8 & 856.9 \\
+Oracle & 0.00 & 13.68 & 0.00 & 74.17 & $\infty$ & 735.6 & 829.0 \\
+\midrule \multicolumn{8}{l}{\textit{Dogani \& Khunjush (2024), Table 11}} \\ \midrule
+No autoscaling & 2.01 & 152.07 & 10.76 & 235.34 & 1.00 & -- & -- \\
+KHPA & 6.23 & 3.05 & 32.05 & 18.23 & 1.30 & 1,841 & 1,892 \\
+FedAvg-BiGRU & 0.26 & 13.04 & 1.65 & 75.12 & 1.59 & 1,008 & 1,049 \\
+FedAvg-LSTM & 0.61 & 16.46 & 3.81 & 94.53 & 1.39 & 1,156 & 1,194 \\
+CentralBiGRU & 0.23 & 12.50 & 1.42 & 72.20 & 1.63 & 976 & 1,009 \\
+CentralLSTM & 0.53 & 16.12 & 3.37 & 87.43 & 1.42 & 1,144 & 1,171 \\
+\bottomrule
+\end{tabular}}
+\caption{Step 4A fair run, Pods\_min 1 for KHPA and planner; same layout as Table~\ref{tab:sim4a}.}
+\label{tab:sim4a_podsmin1}
+\end{table}

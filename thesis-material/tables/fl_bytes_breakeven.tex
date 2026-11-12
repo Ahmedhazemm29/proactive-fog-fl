@@ -1,0 +1,18 @@
+% Source: results/predictors/table8.md and results/predictors/cost.csv; docs/decisions.md 4.4
+\begin{table}[ht]
+\centering
+\small
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrr}
+\toprule
+Model & Parameters & Model bytes & Rounds (best) & Bytes per round & Bytes in total & Break-even rounds & Training time (s) \\
+\midrule
+FedAvg-BiGRU & 27,589 & 110,356 & 19 (9) & 3,531,392 & 67,096,448 & 9.1 & 432.5 \\
+FedAvg-LSTM & 18,501 & 74,004 & 39 (29) & 2,368,128 & 92,356,992 & 13.5 & 758.8 \\
+CentralBiGRU & 27,589 & 110,356 & 19 (9) & -- & 32,071,680 & -- & 442.6 \\
+CentralLSTM & 18,501 & 74,004 & 21 (11) & -- & 32,071,680 & -- & 404.6 \\
+\bottomrule
+\end{tabular}}
+\caption{Model size and communication. Federated: model weights down and up for all 16 clients per round. Central: all nodes' training and validation data (5 float32 features) sent once. Break-even: rounds after which FedAvg has sent as many bytes as the raw data.}
+\label{tab:bytes}
+\end{table}
