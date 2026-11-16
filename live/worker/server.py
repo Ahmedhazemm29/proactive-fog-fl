@@ -3,7 +3,7 @@ One "pod" of the live demo (step 4B): a small HTTP service.
 
 GET /work runs one of Dogani's three tasks, picked at random with equal chance:
   1. sort an array of 3000 random numbers
-  2. eigenvalues of a 100 x 100 random matrix
+  2. eigenvalues of a 100 x 100 random matrix        *similar to what I already need to do, the matrix vector multiplication 
   3. compress a small file (64 KB of text, made once at start)
 GET /health answers at once, so the runner knows the worker is ready.
 
